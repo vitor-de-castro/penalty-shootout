@@ -1,0 +1,22 @@
+:root { color-scheme: dark; }
+body { margin: 0; background: #0b2e1a; font-family: system-ui, sans-serif; color: #f1f5f1; }
+.game { max-width: 640px; margin: 0 auto; padding: 24px 16px 48px; text-align: center; }
+h1 { margin: 0 0 8px; }
+.score { font-size: 1.25rem; margin: 4px 0; }
+.history { display: flex; justify-content: center; gap: 8px; margin: 8px 0 24px; }
+.dot { width: 14px; height: 14px; border-radius: 50%; background: #1f4d33; border: 1px solid #3b7a57; }
+.dot.hit { background: #22c55e; }
+.dot.miss { background: #ef4444; }
+.goal { position: relative; width: 100%; aspect-ratio: 2 / 1; margin: 0 auto 60px; border: 6px solid #fff; border-bottom: none; background: repeating-linear-gradient(45deg, rgba(255,255,255,.06) 0 6px, transparent 6px 12px); }
+.zones { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(2, 1fr); }
+.zone { background: transparent; border: 1px dashed rgba(255,255,255,.2); cursor: pointer; }
+.zone:hover:not(:disabled) { background: rgba(255,255,255,.12); }
+.zone:disabled { cursor: default; }
+.keeper, .ball { position: absolute; transform: translate(-50%, -50%); transition: left .5s ease, top .5s ease; pointer-events: none; z-index: 2; }
+.keeper { left: 50%; top: 65%; font-size: 3rem; }
+.ball { left: 50%; top: 140%; font-size: 2rem; }
+.banner { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 2.5rem; font-weight: 800; z-index: 3; text-shadow: 0 2px 8px #000; pointer-events: none; }
+.banner.goal { color: #22c55e; }
+.banner.saved { color: #ef4444; }
+.hint { opacity: .8; }
+.restart { margin-top: 8px; padding: 10px 22px; font-size: 1rem; border: none; border-radius: 8px; background: #22c55e; color: #052e16; font-weight: 700; cursor: pointer; }
