@@ -27,6 +27,7 @@ interface Game {
   shots: number;
 }
 
+const SLEEVE = 0.55;
 const DEG = Math.PI / 180;
 // Where the keeper's body centre ends up for each dive option
 const DIVES: Dive[] = [
@@ -184,12 +185,18 @@ function drawTaker(ctx: CanvasRenderingContext2D, x: number, y: number, s: numbe
   // arms
   for (const side of [-1, 1]) {
     const a = kick === null ? (side === -1 ? -aL : -aR) * 0.8 : side * 0.9;
+    const sx = side * 15;
+    const sy = -90;
+    const ex = sx + Math.sin(a) * 26 + side * 4;
+    const ey = sy + Math.cos(a) * 26;
+    // forearm / hand
     ctx.strokeStyle = "#e0ac69";
     ctx.lineWidth = 7;
-    ctx.beginPath();
-    ctx.moveTo(side * 15, -90);
-    ctx.lineTo(side * 15 + Math.sin(a) * 26 + side * 4, -90 + Math.cos(a) * 26);
-    ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(ex, ey); ctx.stroke();
+    // short sleeve (set SLEEVE to 1 for long sleeves)
+    ctx.strokeStyle = "#facc15";
+    ctx.lineWidth = 10;
+    ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(lerp(sx, ex, SLEEVE), lerp(sy, ey, SLEEVE)); ctx.stroke();
   }
   // head (seen from behind)
   ctx.fillStyle = "#3b2314";
@@ -218,6 +225,8 @@ function drawBall(ctx: CanvasRenderingContext2D, x: number, y: number, r: number
 export default function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const g = useRef<Game>(newGame());
+  const viewW = useRef(W);
+  const aiming = useRef(false);
   const [score, setScore] = useState(0);
   const [history, setHistory] = useState<Outcome[]>([]);
   const [message, setMessage] = useState<Outcome | null>(null);
@@ -227,6 +236,15 @@ export default function App() {
     const canvas = canvasRef.current!;
     const ctx = canvas.getContext("2d")!;
     let raf = 0;
+
+    // On narrow screens show only the middle of the pitch so the goal is bigger
+    const resize = () => {
+      viewW.current = window.innerWidth < 640 ? 560 : W;
+      canvas.width = viewW.current;
+      canvas.height = H;
+    };
+    resize();
+    window.addEventListener("resize", resize);
 
     const update = (now: number) => {
       const s = g.current;
@@ -256,6 +274,8 @@ export default function App() {
       const s = g.current;
       const el = now - s.t0;
       ctx.clearRect(0, 0, W, H);
+      ctx.save();
+      ctx.translate(-(W - viewW.current) / 2, 0);
       drawPitch(ctx);
       drawNet(ctx);
 
@@ -334,6 +354,7 @@ export default function App() {
         ctx.moveTo(x, y + 8); ctx.lineTo(x, y + 24);
         ctx.stroke();
       }
+      ctx.restore();
     };
 
     const frame = (now: number) => {
@@ -342,13 +363,19 @@ export default function App() {
       raf = requestAnimationFrame(frame);
     };
     raf = requestAnimationFrame(frame);
-    return () => cancelAnimationFrame(raf);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", resize);
+    };
   }, []);
 
   function toCanvas(e: React.PointerEvent<HTMLCanvasElement>) {
     const rect = canvasRef.current!.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) * W) / rect.width;
-    const y = ((e.clientY - rect.top) * H) / rect.height;
+    const scale = viewW.current / rect.width;
+    // on touch screens the reticle sits above the finger so it stays visible
+    const lift = e.pointerType === "touch" ? 60 * scale : 0;
+    const x = (e.clientX - rect.left) * scale + (W - viewW.current) / 2;
+    const y = (e.clientY - rect.top) * scale - lift;
     return {
       x: clamp(x, GOAL.x - 50, GOAL.x + GOAL.w + 50),
       y: clamp(y, GOAL.y - 40, GOAL.y + GOAL.h - 8),
@@ -356,13 +383,30 @@ export default function App() {
   }
 
   function onMove(e: React.PointerEvent<HTMLCanvasElement>) {
+    if (e.pointerType === "mouse" || aiming.current) g.current.hover = toCanvas(e);
+  }
+
+  function onDown(e: React.PointerEvent<HTMLCanvasElement>) {
+    if (g.current.phase !== "aim") return;
+    if (e.pointerType === "mouse") {
+      shoot(toCanvas(e)); // mouse: click to shoot
+      return;
+    }
+    // touch: press and drag to aim, release to shoot
+    aiming.current = true;
+    e.currentTarget.setPointerCapture(e.pointerId);
     g.current.hover = toCanvas(e);
   }
 
-  function onShoot(e: React.PointerEvent<HTMLCanvasElement>) {
+  function onUp(e: React.PointerEvent<HTMLCanvasElement>) {
+    if (!aiming.current) return;
+    aiming.current = false;
+    shoot(toCanvas(e));
+  }
+
+  function shoot(t: { x: number; y: number }) {
     const s = g.current;
     if (s.phase !== "aim") return;
-    const t = toCanvas(e);
     s.hover = t;
     s.target = t;
 
@@ -394,6 +438,7 @@ export default function App() {
     setFinished(false);
   }
 
+  const coarse = typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
   const label: Record<Outcome, string> = { goal: "GOAL!", saved: "SAVED!", missed: "MISSED!" };
 
   return (
@@ -411,10 +456,10 @@ export default function App() {
       <div className="stage">
         <canvas
           ref={canvasRef}
-          width={W}
-          height={H}
           onPointerMove={onMove}
-          onPointerDown={onShoot}
+          onPointerDown={onDown}
+          onPointerUp={onUp}
+          onPointerCancel={() => { aiming.current = false; }}
           aria-label="Penalty pitch. Click inside or near the goal to aim and shoot."
         />
         {message && <div className={`banner ${message}`}>{label[message]}</div>}
@@ -428,7 +473,7 @@ export default function App() {
       </div>
 
       <p className="hint">
-        {finished ? "" : `Shot ${Math.min(g.current.shots + 1, TOTAL_SHOTS)} of ${TOTAL_SHOTS}: click where you want to shoot`}
+        {finished ? "" : `Shot ${Math.min(g.current.shots + 1, TOTAL_SHOTS)} of ${TOTAL_SHOTS}: ${coarse ? "drag to aim, release to shoot" : "click where you want to shoot"}`}
       </p>
     </main>
   );

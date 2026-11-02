@@ -19,3 +19,10 @@ canvas { width: 100%; height: auto; display: block; border-radius: 12px; cursor:
 .end h2 { font-size: 2.2rem; margin: 0 0 4px; }
 .restart { margin-top: 8px; padding: 10px 22px; font-size: 1rem; border: none; border-radius: 8px; background: #22c55e; color: #052e16; font-weight: 700; cursor: pointer; }
 .hint { opacity: .8; min-height: 1.5em; }
+canvas { user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
+@media (max-width: 640px) {
+  .game { padding: 8px 8px 24px; }
+  h1 { font-size: 1.4rem; margin-bottom: 4px; }
+  .hud { margin-bottom: 8px; gap: 12px; }
+  .end h2 { font-size: 1.6rem; }
+}
