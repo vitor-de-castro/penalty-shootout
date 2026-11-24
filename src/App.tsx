@@ -21,7 +21,7 @@ type Phase = "aim" | "power" | "save" | "runup" | "flight" | "result" | "done";
 type Outcome = "goal" | "saved" | "missed" | "post";
 type Point = { x: number; y: number };
 
-interface Team { name: string; shirt: string; shorts: string; socks: string; num: string; keeper: string; stripe?: string }
+interface Team { squad: Player[]; name: string; shirt: string; shorts: string; socks: string; num: string; keeper: string; stripe?: string }
 interface Dive { x: number; y: number; rot: number; wide: boolean }
 interface Player { n: number; skin: string; hair: string; style: "short" | "long" | "afro" | "buzz" | "bald"; boots: string; h: number }
 interface Particle { x: number; y: number; vx: number; vy: number; rot: number; vr: number; c: string; life: number }
@@ -55,26 +55,68 @@ interface Game {
   takerIdx: number; // which of PLAYERS is taking the current kick
 }
 
+// Takers come off the bench in this order: #10 first, then 7, 9, 8, 11, 6...
+const NUMBERS = [10, 7, 9, 8, 11, 6];
+const SK = { fair: "#ffdbac", light: "#f1c27d", tan: "#e0ac69", olive: "#d09a62", brown: "#8d5524", dark: "#6b4220" };
+const HAIR = { black: "#14100c", dark: "#2b1b12", brown: "#4a2c17", chestnut: "#7c3f1d", blond: "#d6a84f", ginger: "#b5532a" };
+type Look = [string, string, Player["style"], string, number]; // skin, hair, style, boots, height
+const squad = (looks: Look[]): Player[] =>
+  looks.map(([skin, hair, style, boots, h], i) => ({ n: NUMBERS[i], skin, hair, style, boots, h }));
+
+// Each national team gets a squad that fits it
+const SQUADS: Record<string, Player[]> = {
+  Brazil: squad([
+    [SK.tan, HAIR.black, "short", "#111827", 1.15], [SK.dark, HAIR.black, "buzz", "#f97316", 1.17],
+    [SK.light, HAIR.chestnut, "short", "#e5e7eb", 1.2], [SK.brown, HAIR.black, "afro", "#2563eb", 1.13],
+    [SK.tan, HAIR.dark, "buzz", "#111827", 1.15], [SK.dark, HAIR.black, "bald", "#22c55e", 1.18],
+  ]),
+  Argentina: squad([
+    [SK.olive, HAIR.black, "short", "#111827", 1.15], [SK.light, HAIR.brown, "long", "#f97316", 1.17],
+    [SK.fair, HAIR.chestnut, "short", "#e5e7eb", 1.2], [SK.tan, HAIR.black, "buzz", "#2563eb", 1.13],
+    [SK.light, HAIR.dark, "short", "#111827", 1.15], [SK.olive, HAIR.black, "bald", "#22c55e", 1.18],
+  ]),
+  France: squad([
+    [SK.light, HAIR.brown, "short", "#111827", 1.15], [SK.dark, HAIR.black, "buzz", "#f97316", 1.17],
+    [SK.tan, HAIR.dark, "short", "#e5e7eb", 1.2], [SK.brown, HAIR.black, "bald", "#2563eb", 1.13],
+    [SK.fair, HAIR.chestnut, "short", "#111827", 1.15], [SK.dark, HAIR.black, "short", "#22c55e", 1.18],
+  ]),
+  England: squad([
+    [SK.fair, HAIR.blond, "short", "#111827", 1.15], [SK.dark, HAIR.black, "buzz", "#f97316", 1.17],
+    [SK.light, HAIR.brown, "short", "#e5e7eb", 1.2], [SK.tan, HAIR.dark, "short", "#2563eb", 1.13],
+    [SK.fair, HAIR.ginger, "short", "#111827", 1.15], [SK.brown, HAIR.black, "afro", "#22c55e", 1.18],
+  ]),
+  Germany: squad([
+    [SK.fair, HAIR.blond, "short", "#111827", 1.15], [SK.tan, HAIR.black, "short", "#f97316", 1.17],
+    [SK.light, HAIR.brown, "buzz", "#e5e7eb", 1.2], [SK.dark, HAIR.black, "short", "#2563eb", 1.13],
+    [SK.fair, HAIR.chestnut, "long", "#111827", 1.15], [SK.light, HAIR.dark, "bald", "#22c55e", 1.18],
+  ]),
+  Netherlands: squad([
+    [SK.fair, HAIR.blond, "short", "#111827", 1.15], [SK.dark, HAIR.black, "buzz", "#f97316", 1.17],
+    [SK.light, HAIR.brown, "short", "#e5e7eb", 1.2], [SK.tan, HAIR.dark, "long", "#2563eb", 1.13],
+    [SK.fair, HAIR.chestnut, "short", "#111827", 1.15], [SK.brown, HAIR.black, "afro", "#22c55e", 1.18],
+  ]),
+  Portugal: squad([
+    [SK.tan, HAIR.black, "short", "#111827", 1.15], [SK.dark, HAIR.black, "buzz", "#f97316", 1.17],
+    [SK.light, HAIR.dark, "short", "#e5e7eb", 1.2], [SK.olive, HAIR.brown, "long", "#2563eb", 1.13],
+    [SK.tan, HAIR.black, "buzz", "#111827", 1.15], [SK.light, HAIR.brown, "bald", "#22c55e", 1.18],
+  ]),
+  Spain: squad([
+    [SK.olive, HAIR.black, "short", "#111827", 1.15], [SK.light, HAIR.brown, "short", "#f97316", 1.17],
+    [SK.dark, HAIR.black, "buzz", "#e5e7eb", 1.2], [SK.tan, HAIR.dark, "long", "#2563eb", 1.13],
+    [SK.fair, HAIR.chestnut, "short", "#111827", 1.15], [SK.olive, HAIR.black, "buzz", "#22c55e", 1.18],
+  ]),
+};
+
 // Plain colour kits (no club crests)
 const TEAMS: Team[] = [
-  { name: "Brazil", shirt: "#facc15", shorts: "#1d4ed8", socks: "#f8fafc", num: "#1d4ed8", keeper: "#f97316" },
-  { name: "France", shirt: "#1e3a8a", shorts: "#f8fafc", socks: "#dc2626", num: "#f8fafc", keeper: "#f97316" },
-  { name: "Argentina", shirt: "#7dd3fc", stripe: "#f8fafc", shorts: "#111827", socks: "#f8fafc", num: "#1e3a8a", keeper: "#f97316" },
-  { name: "Portugal", shirt: "#b91c1c", shorts: "#166534", socks: "#b91c1c", num: "#fde047", keeper: "#f97316" },
-  { name: "England", shirt: "#f8fafc", shorts: "#1e3a8a", socks: "#f8fafc", num: "#1e3a8a", keeper: "#f97316" },
-  { name: "Germany", shirt: "#f1f5f9", shorts: "#111827", socks: "#111827", num: "#111827", keeper: "#f97316" },
-  { name: "Netherlands", shirt: "#f97316", shorts: "#f97316", socks: "#f97316", num: "#ffffff", keeper: "#7c3aed" },
-  { name: "Spain", shirt: "#dc2626", shorts: "#1e3a8a", socks: "#1e3a8a", num: "#fde047", keeper: "#f97316" },
-];
-
-// Takers come off the bench in this order: you start with #10, then 7, 9, 8, 11...
-const PLAYERS: Player[] = [
-  { n: 10, skin: "#e0ac69", hair: "#3b2314", style: "short", boots: "#111827", h: 1.15 },
-  { n: 7, skin: "#8d5524", hair: "#111111", style: "buzz", boots: "#f97316", h: 1.17 },
-  { n: 9, skin: "#f1c27d", hair: "#d6a84f", style: "long", boots: "#e5e7eb", h: 1.2 },
-  { n: 8, skin: "#c68642", hair: "#1f1612", style: "afro", boots: "#2563eb", h: 1.13 },
-  { n: 11, skin: "#ffdbac", hair: "#7c3f1d", style: "short", boots: "#111827", h: 1.15 },
-  { n: 6, skin: "#a9713a", hair: "#2b1b12", style: "bald", boots: "#22c55e", h: 1.18 },
+  { name: "Brazil", squad: SQUADS.Brazil, shirt: "#facc15", shorts: "#1d4ed8", socks: "#f8fafc", num: "#1d4ed8", keeper: "#f97316" },
+  { name: "France", squad: SQUADS.France, shirt: "#1e3a8a", shorts: "#f8fafc", socks: "#dc2626", num: "#f8fafc", keeper: "#f97316" },
+  { name: "Argentina", squad: SQUADS.Argentina, shirt: "#7dd3fc", stripe: "#f8fafc", shorts: "#111827", socks: "#f8fafc", num: "#1e3a8a", keeper: "#f97316" },
+  { name: "Portugal", squad: SQUADS.Portugal, shirt: "#b91c1c", shorts: "#166534", socks: "#b91c1c", num: "#fde047", keeper: "#f97316" },
+  { name: "England", squad: SQUADS.England, shirt: "#f8fafc", shorts: "#1e3a8a", socks: "#f8fafc", num: "#1e3a8a", keeper: "#f97316" },
+  { name: "Germany", squad: SQUADS.Germany, shirt: "#f1f5f9", shorts: "#111827", socks: "#111827", num: "#111827", keeper: "#f97316" },
+  { name: "Netherlands", squad: SQUADS.Netherlands, shirt: "#f97316", shorts: "#f97316", socks: "#f97316", num: "#ffffff", keeper: "#7c3aed" },
+  { name: "Spain", squad: SQUADS.Spain, shirt: "#dc2626", shorts: "#1e3a8a", socks: "#1e3a8a", num: "#fde047", keeper: "#f97316" },
 ];
 
 const MODES: { id: Mode; name: string; desc: string }[] = [
@@ -283,6 +325,33 @@ function roar(strength: number) {
   for (let i = 0; i < claps; i++) noise(0.035, 0.09 * strength, "highpass", 1800, 0.002, 0.4 + Math.random() * dur);
 }
 
+// One note of a "sad trombone": sawtooth through a wah-style low-pass
+function trombone(c: AudioContext, freq: number, t: number, dur: number, droop: boolean) {
+  const osc = c.createOscillator();
+  osc.type = "sawtooth";
+  osc.frequency.setValueAtTime(freq, t);
+  if (droop) osc.frequency.linearRampToValueAtTime(freq * 0.92, t + dur);
+  const lfo = c.createOscillator();
+  lfo.frequency.value = 5.5;
+  const lfoGain = c.createGain();
+  lfoGain.gain.value = droop ? freq * 0.015 : 0;
+  lfo.connect(lfoGain).connect(osc.frequency);
+  const lp = c.createBiquadFilter();
+  lp.type = "lowpass";
+  lp.Q.value = 2;
+  lp.frequency.setValueAtTime(freq * 2, t);
+  lp.frequency.linearRampToValueAtTime(freq * 5, t + dur * 0.25);
+  lp.frequency.linearRampToValueAtTime(freq * 2.2, t + dur);
+  const g = c.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.13, t + 0.04);
+  g.gain.setValueAtTime(0.13, t + dur - 0.08);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  osc.connect(lp).connect(g).connect(c.destination);
+  osc.start(t); osc.stop(t + dur + 0.05);
+  lfo.start(t); lfo.stop(t + dur + 0.05);
+}
+
 const sfx = {
   // Referee's pea whistle: ~2.9 kHz with the fast trill of the pea and some breath
   whistle() {
@@ -325,10 +394,50 @@ const sfx = {
   net() { noise(0.35, 0.12, "bandpass", 1800, 0.01); tone(95, 0.14, "sine", 0.4, 55); },
   slap() { noise(0.07, 0.4, "bandpass", 1500); },
   post() { tone(1300, 0.5, "sine", 0.25, 1100); tone(2600, 0.3, "sine", 0.1); noise(0.05, 0.3, "bandpass", 3000); },
-  groan() { noise(1.0, 0.2, "bandpass", 420, 0.12); tone(240, 0.9, "sawtooth", 0.04, 110); },
+  // Disappointment: the crowd's sinking "awww" plus a sad trombone
+  sad() {
+    const c = ac();
+    if (!c || muted) return;
+    const t = c.currentTime;
+    const dur = 1.5;
+    const src = c.createBufferSource();
+    src.buffer = noiseBuffer(c, dur);
+    const bp = c.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.setValueAtTime(950, t);
+    bp.frequency.exponentialRampToValueAtTime(330, t + dur);
+    bp.Q.value = 2.5;
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.45, t + 0.15);
+    g.gain.setValueAtTime(0.45, t + dur * 0.4);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(bp).connect(g).connect(c.destination);
+    src.start(t);
+    const notes: [number, number][] = [[233.08, 0.3], [220, 0.3], [207.65, 0.3], [196, 1.0]];
+    let at = 0.2;
+    notes.forEach(([f, d], i) => { trombone(c, f, t + at, d, i === notes.length - 1); at += d + 0.04; });
+  },
+  // Victory: a bright, bouncy little fanfare
+  fanfare() {
+    const melody: [number, number][] = [
+      [523.25, 0.14], [659.25, 0.14], [783.99, 0.14], [1046.5, 0.28],
+      [783.99, 0.14], [1046.5, 0.14], [1318.5, 0.8],
+    ];
+    let at = 0.5;
+    let last = at;
+    for (const [f, d] of melody) {
+      tone(f, d * 1.7, "triangle", 0.18, undefined, at);
+      tone(f, d * 1.7, "square", 0.04, undefined, at);
+      last = at;
+      at += d;
+    }
+    for (const f of [523.25, 659.25, 783.99, 1046.5]) tone(f, 1.1, "triangle", 0.09, undefined, last);
+    tone(130.81, 1.2, "triangle", 0.2, undefined, last);
+  },
   end(win: boolean) {
-    if (win) roar(1); else sfx.groan();
     sfx.whistle();
+    if (win) { roar(1); sfx.fanfare(); } else sfx.sad();
   },
 };
 
@@ -395,22 +504,41 @@ function drawPitch(ctx: CanvasRenderingContext2D, now: number, level: number, mi
   ctx.fillStyle = "#0c3a20";
   ctx.fillRect(0, 0, W, 240);
   drawCrowd(ctx, now, level, mine, other);
+  // floodlight glow
+  for (const gx of [70, W - 70]) {
+    const glow = ctx.createRadialGradient(gx, 0, 10, gx, 0, 260);
+    glow.addColorStop(0, "rgba(255,255,230,0.22)");
+    glow.addColorStop(1, "rgba(255,255,230,0)");
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, W, 240);
+  }
+  // advertising boards
   ctx.fillStyle = "#1e293b";
   ctx.fillRect(0, 60, W, 28);
-  ctx.fillStyle = "#475569";
-  for (let x = 10; x < W; x += 120) ctx.fillRect(x, 68, 90, 12);
-
-  const grad = ctx.createLinearGradient(0, 240, 0, H);
-  grad.addColorStop(0, "#15803d");
-  grad.addColorStop(1, "#166534");
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 240, W, H - 240);
-  for (let i = 0; i < 6; i += 2) {
-    ctx.fillStyle = "rgba(255,255,255,0.04)";
-    ctx.fillRect(0, 240 + i * 44, W, 44);
+  ctx.fillStyle = "rgba(255,255,255,0.18)";
+  ctx.fillRect(0, 60, W, 2);
+  for (let x = 10, i = 0; x < W; x += 120, i++) {
+    ctx.fillStyle = i % 2 === 0 ? "#2563eb" : "#475569";
+    ctx.fillRect(x, 67, 90, 14);
+    ctx.fillStyle = "rgba(255,255,255,0.75)";
+    ctx.fillRect(x + 10, 72, 40, 4);
   }
 
-  ctx.strokeStyle = "rgba(255,255,255,0.8)";
+  // grass with mowing stripes that get wider towards the camera
+  const grass = ctx.createLinearGradient(0, 240, 0, H);
+  grass.addColorStop(0, "#15803d");
+  grass.addColorStop(1, "#166534");
+  ctx.fillStyle = grass;
+  ctx.fillRect(0, 240, W, H - 240);
+  const bands = 8;
+  for (let k = 0; k < bands; k += 2) {
+    const y0 = 240 + (H - 240) * Math.pow(k / bands, 1.5);
+    const y1 = 240 + (H - 240) * Math.pow((k + 1) / bands, 1.5);
+    ctx.fillStyle = "rgba(255,255,255,0.045)";
+    ctx.fillRect(0, y0, W, y1 - y0);
+  }
+
+  ctx.strokeStyle = "rgba(255,255,255,0.85)";
   ctx.lineWidth = 3;
   ctx.beginPath(); ctx.moveTo(0, 240); ctx.lineTo(W, 240); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(290, 240); ctx.lineTo(270, 295); ctx.lineTo(530, 295); ctx.lineTo(510, 240); ctx.stroke();
@@ -419,59 +547,113 @@ function drawPitch(ctx: CanvasRenderingContext2D, now: number, level: number, mi
   ctx.beginPath(); ctx.ellipse(SPOT.x, SPOT.y + 12, 7, 3, 0, 0, Math.PI * 2); ctx.fill();
 }
 
+// Goal net with depth: a smaller back panel, side and roof nets
 function drawNet(ctx: CanvasRenderingContext2D) {
-  ctx.fillStyle = "rgba(0,0,0,0.25)";
-  ctx.fillRect(GOAL.x, GOAL.y, GOAL.w, GOAL.h);
-  ctx.strokeStyle = "rgba(255,255,255,0.18)";
+  const { x, y, w, h } = GOAL;
+  const inset = 26, rise = 14;
+  const bx = x + inset, by = y + rise, bw = w - inset * 2, bh = h - rise;
+  ctx.fillStyle = "rgba(0,0,0,0.32)";
+  ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = "rgba(255,255,255,0.06)";
+  ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + w, y); ctx.lineTo(bx + bw, by); ctx.lineTo(bx, by); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(bx, by); ctx.lineTo(bx, by + bh); ctx.lineTo(x, y + h); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(x + w, y); ctx.lineTo(bx + bw, by); ctx.lineTo(bx + bw, by + bh); ctx.lineTo(x + w, y + h); ctx.closePath(); ctx.fill();
+
+  ctx.strokeStyle = "rgba(255,255,255,0.2)";
   ctx.lineWidth = 1;
-  for (let x = GOAL.x; x <= GOAL.x + GOAL.w; x += 16) {
-    ctx.beginPath(); ctx.moveTo(x, GOAL.y); ctx.lineTo(x, GOAL.y + GOAL.h); ctx.stroke();
+  for (let gx = bx; gx <= bx + bw; gx += 14) { ctx.beginPath(); ctx.moveTo(gx, by); ctx.lineTo(gx, by + bh); ctx.stroke(); }
+  for (let gy = by; gy <= by + bh; gy += 14) { ctx.beginPath(); ctx.moveTo(bx, gy); ctx.lineTo(bx + bw, gy); ctx.stroke(); }
+  for (let i = 0; i <= 8; i++) {
+    ctx.beginPath(); ctx.moveTo(x + (w * i) / 8, y); ctx.lineTo(bx + (bw * i) / 8, by); ctx.stroke();
   }
-  for (let y = GOAL.y; y <= GOAL.y + GOAL.h; y += 16) {
-    ctx.beginPath(); ctx.moveTo(GOAL.x, y); ctx.lineTo(GOAL.x + GOAL.w, y); ctx.stroke();
+  for (let i = 0; i <= 6; i++) {
+    ctx.beginPath();
+    ctx.moveTo(x, y + (h * i) / 6); ctx.lineTo(bx, by + (bh * i) / 6);
+    ctx.moveTo(x + w, y + (h * i) / 6); ctx.lineTo(bx + bw, by + (bh * i) / 6);
+    ctx.stroke();
   }
+  ctx.strokeStyle = "rgba(255,255,255,0.35)";
+  ctx.strokeRect(bx, by, bw, bh);
 }
 
 function drawFrame(ctx: CanvasRenderingContext2D) {
-  ctx.strokeStyle = "#fff";
-  ctx.lineWidth = 8;
+  const { x, y, w, h } = GOAL;
+  ctx.fillStyle = "rgba(0,0,0,0.3)";
+  for (const px of [x, x + w]) { ctx.beginPath(); ctx.ellipse(px, y + h + 3, 15, 4, 0, 0, Math.PI * 2); ctx.fill(); }
   ctx.lineCap = "round";
-  ctx.beginPath();
-  ctx.moveTo(GOAL.x, GOAL.y + GOAL.h);
-  ctx.lineTo(GOAL.x, GOAL.y);
-  ctx.lineTo(GOAL.x + GOAL.w, GOAL.y);
-  ctx.lineTo(GOAL.x + GOAL.w, GOAL.y + GOAL.h);
+  ctx.lineJoin = "round";
+  const frame = () => {
+    ctx.beginPath();
+    ctx.moveTo(x, y + h); ctx.lineTo(x, y); ctx.lineTo(x + w, y); ctx.lineTo(x + w, y + h);
+  };
+  frame();
+  ctx.strokeStyle = "#f8fafc";
+  ctx.lineWidth = 8;
+  ctx.stroke();
+  frame();
+  ctx.strokeStyle = "rgba(100,116,139,0.55)";
+  ctx.lineWidth = 1.5;
   ctx.stroke();
 }
 
-function drawKeeper(ctx: CanvasRenderingContext2D, x: number, y: number, rot: number, raise: number, now: number, color: string) {
+/* ----- people: flat colours with a clean dark outline ----- */
+
+const OUTLINE = "rgba(0,0,0,0.3)";
+
+// a limb drawn as a thick line with an outline underneath
+function limb(ctx: CanvasRenderingContext2D, x1: number, y1: number, x2: number, y2: number, width: number, color: string) {
+  ctx.lineCap = "round";
+  ctx.strokeStyle = OUTLINE;
+  ctx.lineWidth = width + 2.4;
+  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
+  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+}
+
+// a rectangle with an outline underneath
+function box(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, color: string) {
+  ctx.fillStyle = OUTLINE;
+  ctx.fillRect(x - 1.2, y - 1.2, w + 2.4, h + 2.4);
+  ctx.fillStyle = color;
+  ctx.fillRect(x, y, w, h);
+}
+
+function drawKeeper(
+  ctx: CanvasRenderingContext2D, x: number, y: number, rot: number, raise: number, now: number,
+  color: string, skin: string, hair: string,
+) {
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(rot);
   ctx.lineCap = "round";
   // legs: thigh, sock, boot
   for (const side of [-1, 1]) {
-    ctx.fillStyle = "#e0ac69";
-    ctx.fillRect(side * 6 - 5, 16, 10, 12);
-    ctx.fillStyle = "#e5e7eb";
-    ctx.fillRect(side * 6 - 5, 28, 10, 16);
+    box(ctx, side * 6 - 5, 16, 10, 12, skin);
+    box(ctx, side * 6 - 5, 28, 10, 16, "#e5e7eb");
     ctx.fillStyle = "#94a3b8";
     ctx.fillRect(side * 6 - 5, 28, 10, 3);
+    ctx.fillStyle = OUTLINE;
+    ctx.beginPath(); ctx.ellipse(side * 6, 46, 8.2, 5.6, 0, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = "#111827";
     ctx.beginPath(); ctx.ellipse(side * 6, 46, 7, 4.5, 0, 0, Math.PI * 2); ctx.fill();
   }
   // shorts
-  ctx.fillStyle = "#1f2937";
-  ctx.fillRect(-14, 3, 28, 16);
+  box(ctx, -14, 3, 28, 16, "#1f2937");
   ctx.fillStyle = "#0f172a";
   ctx.fillRect(-1, 10, 2, 9);
-  // shirt (slightly tapered) with shading
+  // shirt
+  const shirt = () => {
+    ctx.beginPath();
+    ctx.moveTo(-15, -31); ctx.lineTo(15, -31); ctx.lineTo(13, 6); ctx.lineTo(-13, 6);
+    ctx.closePath();
+  };
+  shirt();
+  ctx.strokeStyle = OUTLINE;
+  ctx.lineWidth = 2.4;
+  ctx.stroke();
   ctx.fillStyle = color;
-  ctx.beginPath();
-  ctx.moveTo(-15, -31); ctx.lineTo(15, -31); ctx.lineTo(13, 6); ctx.lineTo(-13, 6);
-  ctx.closePath(); ctx.fill();
-  ctx.fillStyle = "rgba(0,0,0,0.12)";
-  ctx.fillRect(0, -31, 15, 37);
+  ctx.fill();
   ctx.fillStyle = "#1f2937";
   ctx.fillRect(-5, -32, 10, 4);
   ctx.font = "bold 15px system-ui";
@@ -482,27 +664,31 @@ function drawKeeper(ctx: CanvasRenderingContext2D, x: number, y: number, rot: nu
   for (const side of [-1, 1]) {
     const gx = lerp(side * 32, side * 10, raise);
     const gy = lerp(-4 + bob, -68, raise);
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 8;
-    ctx.beginPath(); ctx.moveTo(side * 14, -26); ctx.lineTo(gx, gy); ctx.stroke();
+    limb(ctx, side * 14, -26, gx, gy, 8, color);
     ctx.fillStyle = "#f8fafc";
-    ctx.strokeStyle = "#94a3b8";
-    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = "#64748b";
+    ctx.lineWidth = 1.6;
     ctx.beginPath(); ctx.arc(gx, gy, 7.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
   }
-  // head with a face
-  ctx.fillStyle = "#e0ac69";
-  ctx.fillRect(-4, -36, 8, 6);
-  ctx.beginPath(); ctx.arc(-10, -42, 2.6, 0, Math.PI * 2); ctx.arc(10, -42, 2.6, 0, Math.PI * 2); ctx.fill();
-  ctx.beginPath(); ctx.arc(0, -42, 10, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = "#3b2314";
-  ctx.beginPath(); ctx.arc(0, -44, 10, Math.PI, 0); ctx.fill();
-  ctx.fillRect(-10, -45, 20, 3);
+  // head: no ears, simple face
+  box(ctx, -4, -36, 8, 6, skin);
+  ctx.fillStyle = skin;
+  ctx.strokeStyle = OUTLINE;
+  ctx.lineWidth = 1.4;
+  ctx.beginPath(); ctx.ellipse(0, -43, 9.5, 11, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = hair;
+  ctx.beginPath(); ctx.ellipse(0, -46, 10, 9, 0, Math.PI, 0); ctx.fill();
   ctx.fillStyle = "#1f2937";
-  ctx.beginPath(); ctx.arc(-3.5, -40.5, 1.3, 0, Math.PI * 2); ctx.arc(3.5, -40.5, 1.3, 0, Math.PI * 2); ctx.fill();
-  ctx.strokeStyle = "#8b5a2b";
+  ctx.beginPath(); ctx.arc(-3.5, -41.5, 1.3, 0, Math.PI * 2); ctx.arc(3.5, -41.5, 1.3, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = hair;
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.moveTo(-5.5, -44.5); ctx.lineTo(-1.8, -44.5);
+  ctx.moveTo(1.8, -44.5); ctx.lineTo(5.5, -44.5);
+  ctx.stroke();
+  ctx.strokeStyle = "rgba(90,50,20,0.7)";
   ctx.lineWidth = 1.2;
-  ctx.beginPath(); ctx.moveTo(-2.5, -36); ctx.lineTo(2.5, -36); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(-2.5, -36.5); ctx.lineTo(2.5, -36.5); ctx.stroke();
   ctx.restore();
 }
 
@@ -537,57 +723,61 @@ function drawTaker(
     const kx = hx + Math.sin(a) * THIGH, ky = hipY + Math.cos(a) * THIGH;
     const ca = a - b;
     const fx = kx + Math.sin(ca) * CALF, fy = ky + Math.cos(ca) * CALF;
-    ctx.strokeStyle = p.skin;
-    ctx.lineWidth = 11;
-    ctx.beginPath(); ctx.moveTo(hx, hipY); ctx.lineTo(kx, ky); ctx.stroke();
-    ctx.lineWidth = 8;
-    ctx.beginPath(); ctx.moveTo(kx, ky); ctx.lineTo(fx, fy); ctx.stroke();
+    limb(ctx, hx, hipY, kx, ky, 11, p.skin);
+    limb(ctx, kx, ky, fx, fy, 8, p.skin);
     // sock with a turned-over top
     const top = { x: lerp(fx, kx, 0.82), y: lerp(fy, ky, 0.82) };
+    const rim = { x: lerp(fx, kx, 0.9), y: lerp(fy, ky, 0.9) };
     ctx.lineCap = "butt";
+    ctx.strokeStyle = OUTLINE;
+    ctx.lineWidth = 11.4;
+    ctx.beginPath(); ctx.moveTo(fx, fy); ctx.lineTo(rim.x, rim.y); ctx.stroke();
     ctx.strokeStyle = kit.socks;
     ctx.lineWidth = 9;
     ctx.beginPath(); ctx.moveTo(fx, fy); ctx.lineTo(top.x, top.y); ctx.stroke();
     ctx.strokeStyle = kit.num;
-    ctx.lineWidth = 9;
-    ctx.beginPath(); ctx.moveTo(top.x, top.y); ctx.lineTo(lerp(fx, kx, 0.9), lerp(fy, ky, 0.9)); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(top.x, top.y); ctx.lineTo(rim.x, rim.y); ctx.stroke();
     ctx.lineCap = "round";
     // boot
+    ctx.fillStyle = OUTLINE;
+    ctx.beginPath(); ctx.ellipse(fx, fy + 1, 9.7, 6.2, 0, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = p.boots;
     ctx.beginPath(); ctx.ellipse(fx, fy + 1, 8.5, 5, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = "rgba(0,0,0,0.35)";
+    ctx.fillStyle = "rgba(255,255,255,0.7)";
     ctx.fillRect(fx - 8, fy + 4, 16, 2);
   };
   leg(-6, aL, bL);
   leg(6, aR, bR);
 
-  // shorts (two legs) with side stripes and shading
-  ctx.fillStyle = kit.shorts;
-  ctx.fillRect(-15, -64, 14, 22);
-  ctx.fillRect(1, -64, 14, 22);
-  ctx.fillRect(-15, -64, 30, 8);
+  // shorts: flat colour, thin trim on the sides
+  box(ctx, -15, -64, 14, 22, kit.shorts);
+  box(ctx, 1, -64, 14, 22, kit.shorts);
+  box(ctx, -15, -64, 30, 8, kit.shorts);
   ctx.fillStyle = kit.shirt;
   ctx.fillRect(-15, -62, 2, 20);
   ctx.fillRect(13, -62, 2, 20);
-  ctx.fillStyle = "rgba(0,0,0,0.13)";
-  ctx.fillRect(0, -64, 15, 22);
 
-  // shirt: tapered body, stripes clipped to it, shade, collar, number
-  ctx.save();
-  ctx.beginPath();
-  ctx.moveTo(-16, -95); ctx.lineTo(16, -95); ctx.lineTo(14, -57); ctx.lineTo(-14, -57);
-  ctx.closePath();
+  // shirt: flat colour (stripes only where the kit has them), collar, number
+  const shirt = () => {
+    ctx.beginPath();
+    ctx.moveTo(-16, -95); ctx.lineTo(16, -95); ctx.lineTo(14, -57); ctx.lineTo(-14, -57);
+    ctx.closePath();
+  };
+  shirt();
+  ctx.strokeStyle = OUTLINE;
+  ctx.lineWidth = 2.4;
+  ctx.stroke();
   ctx.fillStyle = kit.shirt;
   ctx.fill();
-  ctx.clip();
   if (kit.stripe) {
+    ctx.save();
+    shirt();
+    ctx.clip();
     ctx.fillStyle = kit.stripe;
     ctx.fillRect(-9, -96, 6, 40);
     ctx.fillRect(3, -96, 6, 40);
+    ctx.restore();
   }
-  ctx.fillStyle = "rgba(0,0,0,0.12)";
-  ctx.fillRect(0, -96, 17, 40);
-  ctx.restore();
   ctx.fillStyle = kit.shorts;
   ctx.fillRect(-6, -96, 12, 4);
   ctx.font = "bold 20px system-ui";
@@ -598,7 +788,7 @@ function drawTaker(
   ctx.fillStyle = kit.num;
   ctx.fillText(String(p.n), 0, -68);
 
-  // arms: skin, short sleeve in the shirt colour, hand
+  // arms: skin, short sleeve, hand
   for (const side of [-1, 1]) {
     const base = kick === null ? (side === -1 ? -aL : -aR) * 0.8 : side * 0.9;
     const a = lerp(base, side * (Math.PI - 0.45), celebrate);
@@ -606,48 +796,34 @@ function drawTaker(
     const sy = -91;
     const ex = sx + Math.sin(a) * 27 + side * 4 * (1 - celebrate);
     const ey = sy + Math.cos(a) * 27;
-    ctx.strokeStyle = p.skin;
-    ctx.lineWidth = 7;
-    ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(ex, ey); ctx.stroke();
+    limb(ctx, sx, sy, ex, ey, 7, p.skin);
     ctx.fillStyle = p.skin;
     ctx.beginPath(); ctx.arc(ex, ey, 4.5, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = kit.shirt;
-    ctx.lineWidth = 10;
-    ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(lerp(sx, ex, SLEEVE), lerp(sy, ey, SLEEVE)); ctx.stroke();
+    limb(ctx, sx, sy, lerp(sx, ex, SLEEVE), lerp(sy, ey, SLEEVE), 10, kit.shirt);
   }
 
-  // neck, ears and hair (we see him from behind)
-  ctx.fillStyle = p.skin;
-  ctx.fillRect(-4, -101, 8, 8);
-  if (p.style !== "afro") {
-    ctx.beginPath(); ctx.arc(-11, -105, 2.8, 0, Math.PI * 2); ctx.arc(11, -105, 2.8, 0, Math.PI * 2); ctx.fill();
-  }
+  // neck and head, seen from behind (no ears)
+  box(ctx, -4, -101, 8, 9, p.skin);
+  ctx.strokeStyle = OUTLINE;
+  ctx.lineWidth = 1.4;
   if (p.style === "afro") {
     ctx.fillStyle = p.hair;
-    ctx.beginPath(); ctx.arc(0, -109, 15, 0, Math.PI * 2); ctx.fill();
-  } else if (p.style === "bald") {
-    ctx.fillStyle = p.skin;
-    ctx.beginPath(); ctx.arc(0, -106, 11, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = "rgba(255,255,255,0.25)";
-    ctx.beginPath(); ctx.ellipse(-3, -111, 4, 2.5, -0.4, 0, Math.PI * 2); ctx.fill();
-  } else if (p.style === "buzz") {
-    ctx.fillStyle = p.skin;
-    ctx.beginPath(); ctx.arc(0, -106, 11, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(0, -109, 15, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  } else if (p.style === "long") {
     ctx.fillStyle = p.hair;
-    ctx.globalAlpha = 0.65;
-    ctx.beginPath(); ctx.arc(0, -106, 11, 0, Math.PI * 2); ctx.fill();
-    ctx.globalAlpha = 1;
+    ctx.beginPath();
+    ctx.moveTo(-10, -106); ctx.lineTo(-9, -86); ctx.quadraticCurveTo(0, -81, 9, -86); ctx.lineTo(10, -106);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(0, -106, 10, 11.5, 0, 0, Math.PI * 2); ctx.fill();
   } else {
-    if (p.style === "long") {
+    ctx.fillStyle = p.style === "bald" ? p.skin : p.style === "buzz" ? p.skin : p.hair;
+    ctx.beginPath(); ctx.ellipse(0, -106, 10, 11.5, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    if (p.style === "buzz") {
       ctx.fillStyle = p.hair;
-      ctx.beginPath();
-      ctx.moveTo(-11, -106); ctx.lineTo(-10, -86); ctx.quadraticCurveTo(0, -81, 10, -86); ctx.lineTo(11, -106);
-      ctx.closePath(); ctx.fill();
+      ctx.globalAlpha = 0.65;
+      ctx.beginPath(); ctx.ellipse(0, -106, 10, 11.5, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1;
     }
-    ctx.fillStyle = p.hair;
-    ctx.beginPath(); ctx.arc(0, -106, 11, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = "rgba(255,255,255,0.16)";
-    ctx.beginPath(); ctx.ellipse(-3.5, -111, 4.5, 2.4, -0.4, 0, Math.PI * 2); ctx.fill();
   }
   ctx.restore();
 }
@@ -853,7 +1029,8 @@ export default function App() {
       else if (s.phase === "result") pose = keeperPose(s.dive, diveProgress(s.flightMs + el));
       else if (s.phase === "done") pose = keeperPose(s.dive, 1);
       else { pose.x = 400 + Math.sin(now / 220) * 8; pose.y = 195 + Math.sin(now / 300) * 2; }
-      drawKeeper(ctx, pose.x, pose.y, pose.rot, pose.raise, now, keeperColor);
+      const keeperLook = (s.turn === "you" ? other : mine).squad[4];
+      drawKeeper(ctx, pose.x, pose.y, pose.rot, pose.raise, now, keeperColor, keeperLook.skin, keeperLook.hair);
       drawFrame(ctx);
 
       // taker
@@ -907,7 +1084,7 @@ export default function App() {
       }
 
       if (preKick) drawBall(ctx, bx, by, br, spin);
-      const player = PLAYERS[s.takerIdx];
+      const player = kicker.squad[s.takerIdx];
       const moving = s.phase === "runup" && kick === null;
       drawTaker(ctx, tx, ty, player.h, swing, s.phase === "aim" || s.phase === "power" || s.phase === "save" ? null : kick, kicker, celebrate, player, moving);
       if (!preKick) drawBall(ctx, bx, by, br, spin, shadow);
@@ -948,6 +1125,14 @@ export default function App() {
       }
       particles.current = particles.current.filter((p) => p.life > 0 && p.y < H + 10);
       ctx.restore();
+
+      // soft vignette
+      const vw = viewW.current;
+      const vg = ctx.createRadialGradient(vw / 2, H * 0.5, H * 0.35, vw / 2, H * 0.5, Math.max(vw, H) * 0.75);
+      vg.addColorStop(0, "rgba(0,0,0,0)");
+      vg.addColorStop(1, "rgba(0,0,0,0.35)");
+      ctx.fillStyle = vg;
+      ctx.fillRect(0, 0, vw, H);
 
       if (s.phase === "power") drawMeter(ctx, viewW.current / 2, powerAt(now, s.t0));
       if (s.phase === "save") drawCountdown(ctx, viewW.current / 2, clamp(1 - el / SAVE_MS));
@@ -999,7 +1184,7 @@ export default function App() {
     if (o === "goal") sfx.net();
     if (o === "saved") sfx.slap();
     if (o === "post") sfx.post();
-    if (good) roar(mine && o === "goal" ? 1 : 0.55); else sfx.groan();
+    if (good) roar(mine && o === "goal" ? 1 : 0.55); else sfx.sad();
     if (good) { s.cheerT = now; s.cheerPower = mine && o === "goal" ? 1 : 0.5; }
     if (mine && o === "goal") spawnConfetti();
 
@@ -1062,7 +1247,7 @@ export default function App() {
     else if (s.turn === "cpu") over = s.cpuHist.length >= TOTAL_SHOTS && s.you !== s.cpu; // sudden death if level
     if (over) { finishGame(); return; }
     if (s.mode === "vs") s.turn = s.turn === "you" ? "cpu" : "you";
-    s.takerIdx = (s.turn === "you" ? s.yourHist.length : s.cpuHist.length + 2) % PLAYERS.length;
+    s.takerIdx = (s.turn === "you" ? s.yourHist.length : s.cpuHist.length + 2) % NUMBERS.length;
     s.phase = s.turn === "cpu" ? "save" : "aim";
     s.t0 = now;
     setUi(s.phase);
@@ -1249,7 +1434,7 @@ export default function App() {
     mode === "vs" ? `Round ${inResult ? taken : taken + 1} · ${g0.turn === "you" ? "your kick" : "their kick"}`
     : mode === "survival" ? `Shot ${inResult ? taken : taken + 1}`
     : `Shot ${Math.min(hud.yourHist.length + 1, TOTAL_SHOTS)} of ${TOTAL_SHOTS}`;
-  const taker = `#${PLAYERS[g0.takerIdx].n}`;
+  const taker = `#${(g0.turn === "you" ? team : g0.cpuTeam).squad[g0.takerIdx].n}`;
   const hint =
     ui === "aim" ? (coarse ? "drag to aim, release to lock" : "click to lock your aim (arrow keys + space also work)")
     : ui === "power" ? (coarse ? "tap to stop the meter in the green" : "click to stop the meter in the green")
