@@ -78,38 +78,38 @@ const SQUADS: Record<string, Player[]> = {
   France: squad([
     [SK.light, HAIR.brown, "short", "#111827", 1.15], [SK.dark, HAIR.black, "buzz", "#f97316", 1.17],
     [SK.tan, HAIR.dark, "short", "#e5e7eb", 1.2], [SK.brown, HAIR.black, "bald", "#2563eb", 1.13],
-    [SK.fair, HAIR.chestnut, "short", "#111827", 1.15], [SK.dark, HAIR.black, "short", "#22c55e", 1.18],
+    [SK.fair, HAIR.chestnut, "short", "#111827", 1.15], [SK.light, HAIR.dark, "short", "#22c55e", 1.18],
   ]),
   England: squad([
-    [SK.fair, HAIR.blond, "short", "#111827", 1.15], [SK.dark, HAIR.black, "buzz", "#f97316", 1.17],
+    [SK.fair, HAIR.blond, "short", "#111827", 1.15], [SK.light, HAIR.dark, "buzz", "#f97316", 1.17],
     [SK.light, HAIR.brown, "short", "#e5e7eb", 1.2], [SK.tan, HAIR.dark, "short", "#2563eb", 1.13],
-    [SK.fair, HAIR.ginger, "short", "#111827", 1.15], [SK.brown, HAIR.black, "afro", "#22c55e", 1.18],
+    [SK.fair, HAIR.ginger, "short", "#111827", 1.15], [SK.light, HAIR.black, "bald", "#22c55e", 1.18],
   ]),
   Germany: squad([
     [SK.fair, HAIR.blond, "short", "#111827", 1.15], [SK.tan, HAIR.black, "short", "#f97316", 1.17],
-    [SK.light, HAIR.brown, "buzz", "#e5e7eb", 1.2], [SK.dark, HAIR.black, "short", "#2563eb", 1.13],
+    [SK.light, HAIR.brown, "buzz", "#e5e7eb", 1.2], [SK.fair, HAIR.dark, "short", "#2563eb", 1.13],
     [SK.fair, HAIR.chestnut, "long", "#111827", 1.15], [SK.light, HAIR.dark, "bald", "#22c55e", 1.18],
   ]),
   Netherlands: squad([
-    [SK.fair, HAIR.blond, "short", "#111827", 1.15], [SK.dark, HAIR.black, "buzz", "#f97316", 1.17],
+    [SK.fair, HAIR.blond, "short", "#111827", 1.15], [SK.light, HAIR.dark, "buzz", "#f97316", 1.17],
     [SK.light, HAIR.brown, "short", "#e5e7eb", 1.2], [SK.tan, HAIR.dark, "long", "#2563eb", 1.13],
-    [SK.fair, HAIR.chestnut, "short", "#111827", 1.15], [SK.brown, HAIR.black, "afro", "#22c55e", 1.18],
+    [SK.fair, HAIR.chestnut, "short", "#111827", 1.15], [SK.light, HAIR.black, "short", "#22c55e", 1.18],
   ]),
   Portugal: squad([
-    [SK.tan, HAIR.black, "short", "#111827", 1.15], [SK.dark, HAIR.black, "buzz", "#f97316", 1.17],
+    [SK.tan, HAIR.black, "short", "#111827", 1.15], [SK.tan, HAIR.black, "buzz", "#f97316", 1.17],
     [SK.light, HAIR.dark, "short", "#e5e7eb", 1.2], [SK.olive, HAIR.brown, "long", "#2563eb", 1.13],
     [SK.tan, HAIR.black, "buzz", "#111827", 1.15], [SK.light, HAIR.brown, "bald", "#22c55e", 1.18],
   ]),
   Spain: squad([
     [SK.olive, HAIR.black, "short", "#111827", 1.15], [SK.light, HAIR.brown, "short", "#f97316", 1.17],
-    [SK.dark, HAIR.black, "buzz", "#e5e7eb", 1.2], [SK.tan, HAIR.dark, "long", "#2563eb", 1.13],
+    [SK.olive, HAIR.black, "buzz", "#e5e7eb", 1.2], [SK.tan, HAIR.dark, "long", "#2563eb", 1.13],
     [SK.fair, HAIR.chestnut, "short", "#111827", 1.15], [SK.olive, HAIR.black, "buzz", "#22c55e", 1.18],
   ]),
 };
 
 // Plain colour kits (no club crests)
 const TEAMS: Team[] = [
-  { name: "Brazil", squad: SQUADS.Brazil, shirt: "#facc15", shorts: "#1d4ed8", socks: "#f8fafc", num: "#1d4ed8", keeper: "#f97316" },
+  { name: "Brazil", squad: SQUADS.Brazil, shirt: "#facc15", shorts: "#1d4ed8", socks: "#f8fafc", num: "#166534", keeper: "#f97316" },
   { name: "France", squad: SQUADS.France, shirt: "#1e3a8a", shorts: "#f8fafc", socks: "#dc2626", num: "#f8fafc", keeper: "#f97316" },
   { name: "Argentina", squad: SQUADS.Argentina, shirt: "#7dd3fc", stripe: "#f8fafc", shorts: "#111827", socks: "#f8fafc", num: "#1e3a8a", keeper: "#f97316" },
   { name: "Portugal", squad: SQUADS.Portugal, shirt: "#b91c1c", shorts: "#166534", socks: "#b91c1c", num: "#fde047", keeper: "#f97316" },
@@ -325,33 +325,6 @@ function roar(strength: number) {
   for (let i = 0; i < claps; i++) noise(0.035, 0.09 * strength, "highpass", 1800, 0.002, 0.4 + Math.random() * dur);
 }
 
-// One note of a "sad trombone": sawtooth through a wah-style low-pass
-function trombone(c: AudioContext, freq: number, t: number, dur: number, droop: boolean) {
-  const osc = c.createOscillator();
-  osc.type = "sawtooth";
-  osc.frequency.setValueAtTime(freq, t);
-  if (droop) osc.frequency.linearRampToValueAtTime(freq * 0.92, t + dur);
-  const lfo = c.createOscillator();
-  lfo.frequency.value = 5.5;
-  const lfoGain = c.createGain();
-  lfoGain.gain.value = droop ? freq * 0.015 : 0;
-  lfo.connect(lfoGain).connect(osc.frequency);
-  const lp = c.createBiquadFilter();
-  lp.type = "lowpass";
-  lp.Q.value = 2;
-  lp.frequency.setValueAtTime(freq * 2, t);
-  lp.frequency.linearRampToValueAtTime(freq * 5, t + dur * 0.25);
-  lp.frequency.linearRampToValueAtTime(freq * 2.2, t + dur);
-  const g = c.createGain();
-  g.gain.setValueAtTime(0.0001, t);
-  g.gain.exponentialRampToValueAtTime(0.13, t + 0.04);
-  g.gain.setValueAtTime(0.13, t + dur - 0.08);
-  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-  osc.connect(lp).connect(g).connect(c.destination);
-  osc.start(t); osc.stop(t + dur + 0.05);
-  lfo.start(t); lfo.stop(t + dur + 0.05);
-}
-
 const sfx = {
   // Referee's pea whistle: ~2.9 kHz with the fast trill of the pea and some breath
   whistle() {
@@ -394,7 +367,7 @@ const sfx = {
   net() { noise(0.35, 0.12, "bandpass", 1800, 0.01); tone(95, 0.14, "sine", 0.4, 55); },
   slap() { noise(0.07, 0.4, "bandpass", 1500); },
   post() { tone(1300, 0.5, "sine", 0.25, 1100); tone(2600, 0.3, "sine", 0.1); noise(0.05, 0.3, "bandpass", 3000); },
-  // Disappointment: the crowd's sinking "awww" plus a sad trombone
+  // Disappointment: the crowd's sinking "awww"
   sad() {
     const c = ac();
     if (!c || muted) return;
@@ -414,9 +387,16 @@ const sfx = {
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     src.connect(bp).connect(g).connect(c.destination);
     src.start(t);
-    const notes: [number, number][] = [[233.08, 0.3], [220, 0.3], [207.65, 0.3], [196, 1.0]];
-    let at = 0.2;
-    notes.forEach(([f, d], i) => { trombone(c, f, t + at, d, i === notes.length - 1); at += d + 0.04; });
+  },
+  // A very short happy jingle for your goals
+  jingle() {
+    const notes: [number, number][] = [[659.25, 0.08], [783.99, 0.08], [1046.5, 0.08], [1318.5, 0.3]];
+    let at = 0.05;
+    for (const [f, d] of notes) {
+      tone(f, d * 1.8, "triangle", 0.16, undefined, at);
+      tone(f, d * 1.8, "square", 0.035, undefined, at);
+      at += d;
+    }
   },
   // Victory: a bright, bouncy little fanfare
   fanfare() {
@@ -1186,7 +1166,7 @@ export default function App() {
     if (o === "post") sfx.post();
     if (good) roar(mine && o === "goal" ? 1 : 0.55); else sfx.sad();
     if (good) { s.cheerT = now; s.cheerPower = mine && o === "goal" ? 1 : 0.5; }
-    if (mine && o === "goal") spawnConfetti();
+    if (mine && o === "goal") { spawnConfetti(); sfx.jingle(); }
 
     const text = mine
       ? { goal: "GOAL!", saved: "SAVED!", missed: "MISSED!", post: "POST!" }[o]
