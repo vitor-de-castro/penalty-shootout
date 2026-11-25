@@ -12,13 +12,16 @@ const KICK_MS = 160;
 const RESULT_MS = 1500;
 const DIVE_DELAY = 120;
 const DIVE_MS = 520;
-const POWER_PERIOD = 1000; // ms for the meter to go 0 -> 1
+const POWER_PERIOD = 1000; // ms for the meter to go 0 -> 1 (normal difficulty)
+let powerPeriod = POWER_PERIOD;
 const SAVE_MS = 3000; // time you get to pick a dive when you are the keeper
 const SLEEVE = 0.55; // 1 = long sleeves
 
-type Mode = "shots" | "survival" | "vs";
+type Mode = "shots" | "survival" | "vs" | "worldcup";
+type DiffId = "easy" | "normal" | "hard";
+interface InstallEvent extends Event { prompt: () => Promise<void> }
 type Phase = "aim" | "power" | "save" | "runup" | "flight" | "result" | "done";
-type Outcome = "goal" | "saved" | "missed" | "post";
+type Outcome = "goal" | "saved" | "missed" | "post" | "bar";
 type Point = { x: number; y: number };
 
 interface Team { squad: Player[]; name: string; shirt: string; shorts: string; socks: string; num: string; keeper: string; stripe?: string }
@@ -26,10 +29,10 @@ interface Dive { x: number; y: number; rot: number; wide: boolean }
 interface Player { n: number; skin: string; hair: string; style: "short" | "long" | "afro" | "buzz" | "bald"; boots: string; h: number }
 interface Particle { x: number; y: number; vx: number; vy: number; rot: number; vr: number; c: string; life: number }
 interface Score { s: number; t: string; d: string }
-interface Scores { shots: Score[]; survival: Score[]; vs: { w: number; l: number } }
+interface Scores { shots: Score[]; survival: Score[]; vs: { w: number; l: number }; cup: { t: number; r: number } }
 interface Hud { you: number; cpu: number; yourHist: Outcome[]; cpuHist: Outcome[] }
 interface Banner { text: string; tone: "good" | "bad" | "neutral" }
-interface Finish { title: string; detail: string; newBest: boolean }
+interface Finish { title: string; detail: string; newBest: boolean; next?: string; trophy?: boolean }
 
 interface Game {
   mode: Mode;
@@ -57,7 +60,7 @@ interface Game {
 
 // Takers come off the bench in this order: #10 first, then 7, 9, 8, 11, 6...
 const NUMBERS = [10, 7, 9, 8, 11, 6];
-const SK = { fair: "#ffdbac", light: "#f1c27d", tan: "#e0ac69", olive: "#d09a62", brown: "#8d5524", dark: "#6b4220" };
+const SK = { fair: "#ffdbac", light: "#f1c27d", tan: "#e0ac69", olive: "#d09a62", asian: "#f0cfa0", arab: "#c9915c", latino: "#b9803f", brown: "#8d5524", dark: "#6b4220" };
 const HAIR = { black: "#14100c", dark: "#2b1b12", brown: "#4a2c17", chestnut: "#7c3f1d", blond: "#d6a84f", ginger: "#b5532a" };
 type Look = [string, string, Player["style"], string, number]; // skin, hair, style, boots, height
 const squad = (looks: Look[]): Player[] =>
@@ -82,7 +85,7 @@ const SQUADS: Record<string, Player[]> = {
   ]),
   England: squad([
     [SK.fair, HAIR.blond, "short", "#111827", 1.15], [SK.light, HAIR.dark, "buzz", "#f97316", 1.17],
-    [SK.light, HAIR.brown, "short", "#e5e7eb", 1.2], [SK.tan, HAIR.dark, "short", "#2563eb", 1.13],
+    [SK.light, HAIR.brown, "short", "#e5e7eb", 1.2], [SK.brown, HAIR.black, "buzz", "#2563eb", 1.13],
     [SK.fair, HAIR.ginger, "short", "#111827", 1.15], [SK.light, HAIR.black, "bald", "#22c55e", 1.18],
   ]),
   Germany: squad([
@@ -92,13 +95,33 @@ const SQUADS: Record<string, Player[]> = {
   ]),
   Netherlands: squad([
     [SK.fair, HAIR.blond, "short", "#111827", 1.15], [SK.light, HAIR.dark, "buzz", "#f97316", 1.17],
-    [SK.light, HAIR.brown, "short", "#e5e7eb", 1.2], [SK.tan, HAIR.dark, "long", "#2563eb", 1.13],
+    [SK.light, HAIR.brown, "short", "#e5e7eb", 1.2], [SK.dark, HAIR.black, "short", "#2563eb", 1.13],
     [SK.fair, HAIR.chestnut, "short", "#111827", 1.15], [SK.light, HAIR.black, "short", "#22c55e", 1.18],
   ]),
   Portugal: squad([
     [SK.tan, HAIR.black, "short", "#111827", 1.15], [SK.tan, HAIR.black, "buzz", "#f97316", 1.17],
     [SK.light, HAIR.dark, "short", "#e5e7eb", 1.2], [SK.olive, HAIR.brown, "long", "#2563eb", 1.13],
     [SK.tan, HAIR.black, "buzz", "#111827", 1.15], [SK.light, HAIR.brown, "bald", "#22c55e", 1.18],
+  ]),
+  Italy: squad([
+    [SK.olive, HAIR.black, "short", "#111827", 1.15], [SK.light, HAIR.dark, "short", "#f97316", 1.17],
+    [SK.fair, HAIR.brown, "long", "#e5e7eb", 1.2], [SK.olive, HAIR.black, "buzz", "#2563eb", 1.13],
+    [SK.light, HAIR.chestnut, "short", "#111827", 1.15], [SK.fair, HAIR.dark, "bald", "#22c55e", 1.18],
+  ]),
+  Japan: squad([
+    [SK.asian, HAIR.black, "short", "#111827", 1.1], [SK.asian, HAIR.black, "buzz", "#f97316", 1.12],
+    [SK.asian, HAIR.dark, "short", "#e5e7eb", 1.14], [SK.asian, HAIR.black, "long", "#2563eb", 1.09],
+    [SK.asian, HAIR.black, "short", "#111827", 1.1], [SK.asian, HAIR.dark, "buzz", "#22c55e", 1.12],
+  ]),
+  Morocco: squad([
+    [SK.arab, HAIR.black, "short", "#111827", 1.15], [SK.arab, HAIR.black, "buzz", "#f97316", 1.17],
+    [SK.arab, HAIR.dark, "short", "#e5e7eb", 1.2], [SK.arab, HAIR.black, "short", "#2563eb", 1.13],
+    [SK.arab, HAIR.black, "buzz", "#111827", 1.15], [SK.arab, HAIR.dark, "bald", "#22c55e", 1.18],
+  ]),
+  Mexico: squad([
+    [SK.latino, HAIR.black, "short", "#111827", 1.12], [SK.latino, HAIR.dark, "buzz", "#f97316", 1.14],
+    [SK.latino, HAIR.black, "long", "#e5e7eb", 1.17], [SK.latino, HAIR.black, "short", "#2563eb", 1.1],
+    [SK.latino, HAIR.dark, "short", "#111827", 1.12], [SK.latino, HAIR.black, "buzz", "#22c55e", 1.15],
   ]),
   Spain: squad([
     [SK.olive, HAIR.black, "short", "#111827", 1.15], [SK.light, HAIR.brown, "short", "#f97316", 1.17],
@@ -117,12 +140,71 @@ const TEAMS: Team[] = [
   { name: "Germany", squad: SQUADS.Germany, shirt: "#f1f5f9", shorts: "#111827", socks: "#111827", num: "#111827", keeper: "#f97316" },
   { name: "Netherlands", squad: SQUADS.Netherlands, shirt: "#f97316", shorts: "#f97316", socks: "#f97316", num: "#ffffff", keeper: "#7c3aed" },
   { name: "Spain", squad: SQUADS.Spain, shirt: "#dc2626", shorts: "#1e3a8a", socks: "#1e3a8a", num: "#fde047", keeper: "#f97316" },
+  { name: "Italy", squad: SQUADS.Italy, shirt: "#2563eb", shorts: "#f8fafc", socks: "#2563eb", num: "#f8fafc", keeper: "#f97316" },
+  { name: "Japan", squad: SQUADS.Japan, shirt: "#172554", shorts: "#172554", socks: "#172554", num: "#f8fafc", keeper: "#f97316" },
+  { name: "Morocco", squad: SQUADS.Morocco, shirt: "#c1272d", shorts: "#14532d", socks: "#c1272d", num: "#f8fafc", keeper: "#f97316" },
+  { name: "Mexico", squad: SQUADS.Mexico, shirt: "#15803d", shorts: "#f8fafc", socks: "#dc2626", num: "#f8fafc", keeper: "#f97316" },
 ];
 
-const MODES: { id: Mode; name: string; desc: string }[] = [
-  { id: "shots", name: "5 Shots", desc: "Score as many as you can" },
-  { id: "survival", name: "Survival", desc: "Keep scoring until you miss" },
-  { id: "vs", name: "vs Computer", desc: "Take turns: you shoot, then you keep" },
+/* ---------- kits that never clash ---------- */
+
+const rgb = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+const colourDist = (a: string, b: string) => {
+  const p = rgb(a), q = rgb(b);
+  return Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]);
+};
+const KEEPER_COLOURS = ["#f97316", "#7c3aed", "#ec4899", "#eab308", "#06b6d4", "#111827"];
+
+// The keeper wears the first colour that is clearly different from the shooter's kit
+const keeperMemo = new Map<string, string>();
+function keeperKit(def: Team, att: Team): string {
+  const key = `${def.name}|${att.name}|${att.shirt}`;
+  const hit = keeperMemo.get(key);
+  if (hit) return hit;
+  const score = (c: string) => Math.min(colourDist(c, att.shirt), colourDist(c, att.stripe ?? att.shirt), colourDist(c, att.shorts) + 40);
+  const options = [def.keeper, ...KEEPER_COLOURS];
+  const best = options.find((c) => score(c) >= 115) ?? options.reduce((a, b) => (score(b) > score(a) ? b : a));
+  keeperMemo.set(key, best);
+  return best;
+}
+
+// If two outfield shirts look alike, the computer team plays in an away kit
+function awayKit(t: Team, vs: Team): Team {
+  if (colourDist(t.shirt, vs.shirt) >= 105) return t;
+  const away: Team[] = [
+    { ...t, stripe: undefined, shirt: "#f8fafc", shorts: t.shirt, socks: t.shirt, num: "#111827" },
+    { ...t, stripe: undefined, shirt: "#111827", shorts: "#f8fafc", socks: "#111827", num: "#f8fafc" },
+  ];
+  return away.find((a) => colourDist(a.shirt, vs.shirt) >= 130) ?? away[1];
+}
+
+/* ---------- difficulty ---------- */
+
+const DIFFS: Record<DiffId, { name: string; desc: string; read: number; reach: number; period: number; cpuMin: number; cpuRange: number }> = {
+  easy: { name: "Easy", desc: "Slow meter, sleepy keeper", read: 0.08, reach: 0.88, period: 1250, cpuMin: 0.4, cpuRange: 0.55 },
+  normal: { name: "Normal", desc: "A fair fight", read: 0.2, reach: 1, period: 1000, cpuMin: 0.55, cpuRange: 0.4 },
+  hard: { name: "Hard", desc: "Fast meter, sharp keeper", read: 0.38, reach: 1.12, period: 780, cpuMin: 0.68, cpuRange: 0.22 },
+};
+let cfg = DIFFS.normal;
+const ROUNDS = ["Round of 16", "Quarter-final", "Semi-final", "Final"];
+const versus = (m: Mode): m is "vs" | "worldcup" => m === "vs" || m === "worldcup";
+const shuffle = <T,>(a: T[]) => {
+  const r = [...a];
+  for (let i = r.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [r[i], r[j]] = [r[j], r[i]]; }
+  return r;
+};
+
+let vibOn = true;
+const buzz = (p: number | number[]) => {
+  if (!vibOn) return;
+  try { navigator.vibrate?.(p); } catch { /* not supported */ }
+};
+
+const MODES: { id: Mode; name: string; desc: string; icon: string }[] = [
+  { id: "worldcup", name: "World Cup", desc: "Win four shootouts to lift the trophy", icon: "🏆" },
+  { id: "vs", name: "vs Computer", desc: "Take turns: you shoot, then you keep", icon: "🆚" },
+  { id: "shots", name: "5 Shots", desc: "Score as many as you can", icon: "🎯" },
+  { id: "survival", name: "Survival", desc: "Keep scoring until you miss", icon: "🔥" },
 ];
 
 const DEG = Math.PI / 180;
@@ -170,7 +252,7 @@ function keeperPose(d: Dive, dp: number) {
 }
 
 const powerAt = (now: number, t0: number) => {
-  const x = ((now - t0) / POWER_PERIOD) % 2;
+  const x = ((now - t0) / powerPeriod) % 2;
   return x < 1 ? x : 2 - x;
 };
 
@@ -194,7 +276,12 @@ function loadScores(): Scores {
     const v = JSON.parse(load("ps-vs") ?? "null");
     if (v && typeof v.w === "number" && typeof v.l === "number") vs = v;
   } catch { /* ignore */ }
-  return { shots: list("ps-hs-shots"), survival: list("ps-hs-survival"), vs };
+  let cup = { t: 0, r: -1 };
+  try {
+    const v = JSON.parse(load("ps-cup") ?? "null");
+    if (v && typeof v.t === "number" && typeof v.r === "number") cup = v;
+  } catch { /* ignore */ }
+  return { shots: list("ps-hs-shots"), survival: list("ps-hs-survival"), vs, cup };
 }
 
 /* ---------- sound (synthesised, no files) ---------- */
@@ -366,6 +453,7 @@ const sfx = {
   kick() { noise(0.09, 0.5, "lowpass", 500); tone(160, 0.14, "sine", 0.5, 45); },
   net() { noise(0.35, 0.12, "bandpass", 1800, 0.01); tone(95, 0.14, "sine", 0.4, 55); },
   slap() { noise(0.07, 0.4, "bandpass", 1500); },
+  bar() { tone(520, 0.6, "sine", 0.3, 420); tone(1040, 0.35, "triangle", 0.12); noise(0.06, 0.35, "bandpass", 1800); },
   post() { tone(1300, 0.5, "sine", 0.25, 1100); tone(2600, 0.3, "sine", 0.1); noise(0.05, 0.3, "bandpass", 3000); },
   // Disappointment: the crowd's sinking "awww"
   sad() {
@@ -937,6 +1025,11 @@ export default function App() {
   const [ui, setUi] = useState<Phase>("aim");
   const [curve, setCurve] = useState<-1 | 0 | 1>(0);
   const [mute, setMute] = useState(() => load("ps-mute") === "1");
+  const [vib, setVib] = useState(() => load("ps-vib") !== "0");
+  const [diff, setDiff] = useState<DiffId>(() => { const d = load("ps-diff"); return d === "easy" || d === "hard" ? d : "normal"; });
+  const [installEvt, setInstallEvt] = useState<InstallEvent | null>(null);
+  const cup = useRef<{ round: number; opps: Team[] }>({ round: 0, opps: [] });
+  const trail = useRef<{ x: number; y: number; r: number }[]>([]);
 
   const g = useRef<Game>(newGame(mode, TEAMS[1]));
   const teamRef = useRef(team);
@@ -944,6 +1037,7 @@ export default function App() {
   teamRef.current = team;
   scoresRef.current = scores;
   muted = mute;
+  vibOn = vib;
 
   // The animation loop lives in an effect that only runs once, so it calls the
   // latest versions of these functions through this ref.
@@ -969,6 +1063,10 @@ export default function App() {
     window.addEventListener("resize", resize);
     const onKey = (e: KeyboardEvent) => api.current.key(e);
     window.addEventListener("keydown", onKey);
+    const onInstall = (e: Event) => { e.preventDefault(); setInstallEvt(e as InstallEvent); };
+    const onInstalled = () => setInstallEvt(null);
+    window.addEventListener("beforeinstallprompt", onInstall);
+    window.addEventListener("appinstalled", onInstalled);
 
     const update = (now: number) => {
       const s = g.current;
@@ -977,6 +1075,7 @@ export default function App() {
         s.t0 = now;
         setUi("flight");
         sfx.kick();
+        buzz(15);
       } else if (s.phase === "flight" && now - s.t0 >= s.flightMs) {
         api.current.flightEnd(now);
       } else if (s.phase === "result" && now - s.t0 >= RESULT_MS) {
@@ -991,14 +1090,16 @@ export default function App() {
       const mine = teamRef.current;
       const other = s.cpuTeam;
       const kicker = s.turn === "you" ? mine : other;
-      const keeperColor = s.turn === "you" ? other.keeper : mine.keeper;
+      const keeperColor = s.turn === "you" ? keeperKit(other, mine) : keeperKit(mine, other);
       const el = now - s.t0;
       const dt = Math.min(0.05, (now - lastNow.current) / 1000);
       lastNow.current = now;
 
       ctx.clearRect(0, 0, W, H);
       ctx.save();
-      ctx.translate(-(W - viewW.current) / 2, 0);
+      const hitIt = s.outcome === "goal" || s.outcome === "post" || s.outcome === "bar";
+      const sh = s.phase === "result" && hitIt && el < 280 ? (1 - el / 280) * 4 : 0;
+      ctx.translate(-(W - viewW.current) / 2 + (Math.random() - 0.5) * sh * 2, (Math.random() - 0.5) * sh * 2);
       const level = s.cheerPower * clamp(1 - (now - s.cheerT) / 2600);
       drawPitch(ctx, now, level, mine, other);
       drawNet(ctx);
@@ -1053,7 +1154,7 @@ export default function App() {
           const dir = s.target.x >= s.dive.x ? 1 : -1;
           bx = s.target.x + dir * d * 0.1;
           by = Math.min(s.target.y + d * 0.06, 270);
-        } else if (s.outcome === "post") {
+        } else if (s.outcome === "post" || s.outcome === "bar") {
           bx = s.target.x + (SPOT.x - s.target.x) * d * 0.0004;
           by = s.target.y + (SPOT.y - s.target.y) * d * 0.0006;
         } else {
@@ -1063,6 +1164,14 @@ export default function App() {
         }
       }
 
+      if (s.phase === "flight") {
+        trail.current.push({ x: bx, y: by, r: br });
+        if (trail.current.length > 9) trail.current.shift();
+        trail.current.forEach((p, i, a) => {
+          ctx.fillStyle = `rgba(255,255,255,${(i / a.length) * 0.3})`;
+          ctx.beginPath(); ctx.arc(p.x, p.y, p.r * (0.35 + 0.5 * (i / a.length)), 0, Math.PI * 2); ctx.fill();
+        });
+      } else trail.current.length = 0;
       if (preKick) drawBall(ctx, bx, by, br, spin);
       const player = kicker.squad[s.takerIdx];
       const moving = s.phase === "runup" && kick === null;
@@ -1128,6 +1237,8 @@ export default function App() {
       cancelAnimationFrame(raf);
       window.removeEventListener("resize", resize);
       window.removeEventListener("keydown", onKey);
+      window.removeEventListener("beforeinstallprompt", onInstall);
+      window.removeEventListener("appinstalled", onInstalled);
     };
   }, []);
 
@@ -1164,14 +1275,20 @@ export default function App() {
     if (o === "goal") sfx.net();
     if (o === "saved") sfx.slap();
     if (o === "post") sfx.post();
+    if (o === "bar") sfx.bar();
+    buzz(
+      o === "goal" ? (mine ? [40, 40, 40, 40, 160] : [260])
+      : o === "saved" ? (mine ? [160] : [30, 30, 90])
+      : o === "missed" ? [120] : [25, 40, 25],
+    );
     if (good) roar(mine && o === "goal" ? 1 : 0.55); else sfx.sad();
     if (good) { s.cheerT = now; s.cheerPower = mine && o === "goal" ? 1 : 0.5; }
     if (mine && o === "goal") { spawnConfetti(); sfx.jingle(); }
 
     const text = mine
-      ? { goal: "GOAL!", saved: "SAVED!", missed: "MISSED!", post: "POST!" }[o]
-      : { goal: "CONCEDED!", saved: "YOU SAVED IT!", missed: "THEY MISSED!", post: "OFF THE POST!" }[o];
-    setBanner({ text, tone: o === "post" ? "neutral" : good ? "good" : "bad" });
+      ? { goal: "GOAL!", saved: "SAVED!", missed: "MISSED!", post: "POST!", bar: "BAR!" }[o]
+      : { goal: "CONCEDED!", saved: "YOU SAVED IT!", missed: "THEY MISSED!", post: "OFF THE POST!", bar: "OFF THE BAR!" }[o];
+    setBanner({ text, tone: o === "post" || o === "bar" ? "neutral" : good ? "good" : "bad" });
     setUi("result");
     syncHud();
   }
@@ -1193,18 +1310,36 @@ export default function App() {
     const s = g.current;
     s.phase = "done";
     setUi("done");
-    if (s.mode === "vs") {
+    if (versus(s.mode)) {
       const win = s.you > s.cpu;
-      const rec = { ...scoresRef.current.vs };
-      if (win) rec.w += 1; else rec.l += 1;
-      store("ps-vs", JSON.stringify(rec));
-      setScores((prev) => ({ ...prev, vs: rec }));
-      setFinish({
-        title: win ? "You win!" : "You lose",
-        detail: `${teamRef.current.name} ${s.you} – ${s.cpu} ${s.cpuTeam.name}`,
-        newBest: false,
-      });
-      sfx.end(win);
+      const mineName = teamRef.current.name;
+      const result = `${mineName} ${s.you} – ${s.cpu} ${s.cpuTeam.name}`;
+      if (s.mode === "vs") {
+        const rec = { ...scoresRef.current.vs };
+        if (win) rec.w += 1; else rec.l += 1;
+        store("ps-vs", JSON.stringify(rec));
+        setScores((prev) => ({ ...prev, vs: rec }));
+        setFinish({ title: win ? "You win!" : "You lose", detail: result, newBest: false });
+        sfx.end(win);
+      } else {
+        const round = cup.current.round;
+        const rec = { ...scoresRef.current.cup };
+        if (round > rec.r) rec.r = round;
+        const champion = win && round === ROUNDS.length - 1;
+        if (champion) rec.t += 1;
+        store("ps-cup", JSON.stringify(rec));
+        setScores((prev) => ({ ...prev, cup: rec }));
+        if (champion) {
+          setFinish({ title: "WORLD CHAMPIONS!", detail: `${result} in the final`, newBest: false, trophy: true });
+          for (let i = 0; i < 4; i++) setTimeout(spawnConfetti, i * 500);
+          buzz([100, 50, 100, 50, 300]);
+        } else if (win) {
+          setFinish({ title: `${ROUNDS[round]} won!`, detail: `${result}. Next: ${ROUNDS[round + 1]} vs ${cup.current.opps[round + 1].name}`, newBest: false, next: `${ROUNDS[round + 1]} →` });
+        } else {
+          setFinish({ title: "Knocked out", detail: `${result} in the ${ROUNDS[round].toLowerCase()}`, newBest: false });
+        }
+        sfx.end(win);
+      }
     } else {
       const newBest = addScore(s.mode, s.you);
       setFinish({
@@ -1226,7 +1361,7 @@ export default function App() {
     else if (s.mode === "survival") over = s.outcome !== "goal";
     else if (s.turn === "cpu") over = s.cpuHist.length >= TOTAL_SHOTS && s.you !== s.cpu; // sudden death if level
     if (over) { finishGame(); return; }
-    if (s.mode === "vs") s.turn = s.turn === "you" ? "cpu" : "you";
+    if (versus(s.mode)) s.turn = s.turn === "you" ? "cpu" : "you";
     s.takerIdx = (s.turn === "you" ? s.yourHist.length : s.cpuHist.length + 2) % NUMBERS.length;
     s.phase = s.turn === "cpu" ? "save" : "aim";
     s.t0 = now;
@@ -1253,14 +1388,16 @@ export default function App() {
 
     const kp = keeperPose(dive, diveProgress(s.flightMs));
     const bonus = power < 0.45 ? 1.25 : 1; // a weak shot is easier to reach
-    const rx = (dive.wide ? 78 : 44) * bonus;
-    const ry = (dive.wide ? 40 : 60) * bonus;
+    const skill = s.turn === "you" ? cfg.reach + (s.mode === "worldcup" ? cup.current.round * 0.02 : 0) : 2 - cfg.reach;
+    const rx = (dive.wide ? 78 : 44) * bonus * skill;
+    const ry = (dive.wide ? 40 : 60) * bonus * skill;
     const right = GOAL.x + GOAL.w;
     const hitPost = (Math.abs(t.x - GOAL.x) <= 10 || Math.abs(t.x - right) <= 10) && t.y >= GOAL.y - 10 && t.y <= GOAL.y + GOAL.h;
     const hitBar = Math.abs(t.y - GOAL.y) <= 10 && t.x >= GOAL.x - 10 && t.x <= right + 10;
     const outside = t.x < GOAL.x || t.x > right || t.y < GOAL.y;
     const reached = ((t.x - kp.x) / rx) ** 2 + ((t.y - kp.y) / ry) ** 2 < 1;
-    s.outcome = hitPost || hitBar ? "post" : outside ? "missed" : reached ? "saved" : "goal";
+    const nearBar = Math.abs(t.y - GOAL.y) < Math.min(Math.abs(t.x - GOAL.x), Math.abs(t.x - right));
+    s.outcome = hitPost && hitBar ? (nearBar ? "bar" : "post") : hitPost ? "post" : hitBar ? "bar" : outside ? "missed" : reached ? "saved" : "goal";
 
     s.phase = "runup";
     s.t0 = performance.now();
@@ -1272,7 +1409,8 @@ export default function App() {
   function shoot(power: number) {
     const s = g.current;
     if (s.phase !== "power") return;
-    const base = s.mode === "survival" ? Math.min(0.6, 0.2 + 0.04 * s.you) : 0.2;
+    const cupBoost = s.mode === "worldcup" ? cup.current.round * 0.05 : 0;
+    const base = Math.min(0.65, cfg.read + cupBoost + (s.mode === "survival" ? 0.04 * s.you : 0));
     const readChance = s.curve !== 0 ? base * 0.25 : base;
     const dive = Math.random() < readChance ? nearestDive(s.locked) : DIVES[Math.floor(Math.random() * DIVES.length)];
     launch(s.locked, power, s.curve, dive);
@@ -1283,7 +1421,7 @@ export default function App() {
     const s = g.current;
     const base = CPU_AIMS[Math.floor(Math.random() * CPU_AIMS.length)];
     const aim = { x: base.x + (Math.random() - 0.5) * 30, y: base.y + (Math.random() - 0.5) * 20 };
-    const power = 0.55 + Math.random() * 0.4;
+    const power = cfg.cpuMin + Math.random() * cfg.cpuRange;
     const swerve: -1 | 0 | 1 = Math.random() < 0.2 ? (Math.random() < 0.5 ? -1 : 1) : 0;
     launch(aim, power, swerve, s.dive);
   }
@@ -1372,13 +1510,24 @@ export default function App() {
 
   /* ----- menu / controls ----- */
 
-  function startGame() {
+  function startGame(nextMatch = false) {
     ac();
     applyAmbient();
     store("ps-team", team.name);
     store("ps-mode", mode);
-    const others = TEAMS.filter((t) => t.name !== team.name);
-    const cpuTeam = others[Math.floor(Math.random() * others.length)];
+    store("ps-diff", diff);
+    cfg = DIFFS[diff];
+    powerPeriod = cfg.period;
+    let opp: Team;
+    if (mode === "worldcup") {
+      if (nextMatch) cup.current.round += 1;
+      else cup.current = { round: 0, opps: shuffle(TEAMS.filter((t) => t.name !== team.name)).slice(0, ROUNDS.length) };
+      opp = cup.current.opps[cup.current.round];
+    } else {
+      const others = TEAMS.filter((t) => t.name !== team.name);
+      opp = others[Math.floor(Math.random() * others.length)];
+    }
+    const cpuTeam = awayKit(opp, team);
     const keep = g.current.curve;
     g.current = newGame(mode, cpuTeam);
     g.current.curve = keep;
@@ -1396,6 +1545,20 @@ export default function App() {
     (document.activeElement as HTMLElement | null)?.blur();
   }
 
+  function toggleVib() {
+    const next = !vib;
+    vibOn = next;
+    store("ps-vib", next ? "1" : "0");
+    setVib(next);
+    if (next) buzz(40);
+  }
+
+  async function install() {
+    if (!installEvt) return;
+    await installEvt.prompt();
+    setInstallEvt(null);
+  }
+
   function toggleMute() {
     const next = !mute;
     muted = next;
@@ -1411,7 +1574,7 @@ export default function App() {
   const inResult = ui === "result" || ui === "done";
   const taken = g0.turn === "you" ? hud.yourHist.length : hud.cpuHist.length;
   const kickLabel =
-    mode === "vs" ? `Round ${inResult ? taken : taken + 1} · ${g0.turn === "you" ? "your kick" : "their kick"}`
+    versus(mode) ? `Round ${inResult ? taken : taken + 1} · ${g0.turn === "you" ? "your kick" : "their kick"}`
     : mode === "survival" ? `Shot ${inResult ? taken : taken + 1}`
     : `Shot ${Math.min(hud.yourHist.length + 1, TOTAL_SHOTS)} of ${TOTAL_SHOTS}`;
   const taker = `#${(g0.turn === "you" ? team : g0.cpuTeam).squad[g0.takerIdx].n}`;
@@ -1426,7 +1589,11 @@ export default function App() {
     ));
   const kitBg = (t: Team) =>
     t.stripe ? `repeating-linear-gradient(90deg, ${t.shirt} 0 5px, ${t.stripe} 5px 10px)` : t.shirt;
-  const table = mode === "vs" ? null : scores[mode];
+  const table = mode === "shots" || mode === "survival" ? scores[mode] : null;
+  const canVibrate = typeof navigator !== "undefined" && "vibrate" in navigator;
+  const standalone = typeof window !== "undefined" && (window.matchMedia("(display-mode: standalone)").matches || (navigator as Navigator & { standalone?: boolean }).standalone === true);
+  const iosHint = typeof navigator !== "undefined" && /iphone|ipad|ipod/i.test(navigator.userAgent) && !standalone;
+  const cupLine = scores.cup.r < 0 ? "No tournament played yet" : `🏆 ${scores.cup.t} ${scores.cup.t === 1 ? "title" : "titles"} · furthest run: ${ROUNDS[scores.cup.r]}`;
 
   const scoreTable = (list: Score[]) => (
     <ol className="table">
@@ -1439,16 +1606,40 @@ export default function App() {
 
   return (
     <main className="game">
-      <h1>Penalty Shootout</h1>
+      {screen === "game" && <h1 className="mini">⚽ Penalty Shootout</h1>}
 
       {screen === "menu" && (
         <section className="menu">
+          <header className="hero">
+            <svg className="heroball" viewBox="0 0 100 100" aria-hidden="true">
+              <circle cx="50" cy="50" r="46" fill="#f8fafc" stroke="#0f172a" strokeWidth="4" />
+              <polygon points="50,30 69,44 62,66 38,66 31,44" fill="#0f172a" />
+              <g stroke="#0f172a" strokeWidth="3.5" strokeLinecap="round">
+                <path d="M50 30 L50 8" /><path d="M69 44 L90 37" /><path d="M62 66 L75 84" /><path d="M38 66 L25 84" /><path d="M31 44 L10 37" />
+              </g>
+            </svg>
+            <p className="kicker">The spot-kick game</p>
+            <h1><span className="l1">Penalty</span><span className="l2">Shootout</span></h1>
+            <p className="tag">Pick a nation. Beat the keeper. <b>Win the World Cup.</b></p>
+          </header>
+
           <h2>Game mode</h2>
           <div className="modes">
             {MODES.map((m) => (
-              <button key={m.id} className={`mode ${mode === m.id ? "on" : ""}`} onClick={() => setMode(m.id)}>
+              <button key={m.id} className={`mode ${m.id === "worldcup" ? "cup" : ""} ${mode === m.id ? "on" : ""}`} onClick={() => setMode(m.id)}>
+                <i>{m.icon}</i>
                 <b>{m.name}</b>
                 <span>{m.desc}</span>
+              </button>
+            ))}
+          </div>
+
+          <h2>Difficulty</h2>
+          <div className="diffs" role="group" aria-label="Difficulty">
+            {(Object.keys(DIFFS) as DiffId[]).map((d) => (
+              <button key={d} className={diff === d ? "on" : ""} onClick={() => setDiff(d)}>
+                <b>{DIFFS[d].name}</b>
+                <span>{DIFFS[d].desc}</span>
               </button>
             ))}
           </div>
@@ -1463,21 +1654,28 @@ export default function App() {
             ))}
           </div>
 
-          <h2>{mode === "vs" ? "Your record" : "High scores"}</h2>
+          <h2>{mode === "vs" ? "Your record" : mode === "worldcup" ? "Your World Cup" : "High scores"}</h2>
           {mode === "vs"
             ? <p className="record">{scores.vs.w} {scores.vs.w === 1 ? "win" : "wins"} · {scores.vs.l} {scores.vs.l === 1 ? "loss" : "losses"}</p>
-            : scoreTable(scores[mode])}
+            : mode === "worldcup"
+              ? <p className="record">{cupLine}</p>
+              : scoreTable(scores[mode])}
 
-          <button className="restart big" onClick={startGame}>Kick off!</button>
+          <button className="restart big" onClick={() => startGame()}>{mode === "worldcup" ? "Start the World Cup" : "Kick off!"}</button>
+
+          {installEvt && <button className="install" onClick={install}>📲 Install as an app</button>}
+          {!installEvt && iosHint && <p className="small">On iPhone: tap Share, then “Add to Home Screen” to install.</p>}
+          <p className="small foot">Made with React, TypeScript and Vite · works offline once loaded</p>
         </section>
       )}
 
       <div style={{ display: screen === "game" ? "block" : "none" }}>
         <div className="hud">
-          {mode === "vs" ? (
+          {mode === "worldcup" && <div className="roundbar">🏆 {ROUNDS[cup.current.round]} · vs {g0.cpuTeam.name}</div>}
+          {versus(mode) ? (
             <div className="vs">
               <div className="vsrow"><span className="who">You</span><b>{hud.you}</b><span className="dots">{dots(hud.yourHist)}</span></div>
-              <div className="vsrow"><span className="who">CPU</span><b>{hud.cpu}</b><span className="dots">{dots(hud.cpuHist)}</span></div>
+              <div className="vsrow"><span className="who">{mode === "worldcup" ? g0.cpuTeam.name : "CPU"}</span><b>{hud.cpu}</b><span className="dots">{dots(hud.cpuHist)}</span></div>
             </div>
           ) : mode === "survival" ? (
             <span className="score">Streak: {hud.you} · Best: {scores.survival[0]?.s ?? 0}</span>
@@ -1488,6 +1686,7 @@ export default function App() {
             </>
           )}
           <button className="tool" onClick={() => setScreen("menu")} aria-label="Back to menu">Menu</button>
+          {canVibrate && <button className="tool" onClick={toggleVib} aria-label={vib ? "Vibration on" : "Vibration off"}>{vib ? "📳" : "📴"}</button>}
           <button className="tool" onClick={toggleMute} aria-label={mute ? "Unmute" : "Mute"}>{mute ? "🔇" : "🔊"}</button>
         </div>
 
@@ -1503,13 +1702,16 @@ export default function App() {
           {banner && <div className={`banner ${banner.tone}`}>{banner.text}</div>}
           {finish && (
             <div className="overlay">
+              {finish.trophy && <div className="trophy" aria-hidden="true">🏆</div>}
               <h2>{finish.title}</h2>
               <p>{finish.detail}</p>
               {finish.newBest && <p className="best">New high score!</p>}
               {table && scoreTable(table)}
               {mode === "vs" && <p className="record">{scores.vs.w} {scores.vs.w === 1 ? "win" : "wins"} · {scores.vs.l} {scores.vs.l === 1 ? "loss" : "losses"}</p>}
               <div className="row">
-                <button className="restart" onClick={startGame}>Play again</button>
+                {finish.next
+                  ? <button className="restart" onClick={() => startGame(true)}>{finish.next}</button>
+                  : <button className="restart" onClick={() => startGame()}>{mode === "worldcup" ? "New tournament" : "Play again"}</button>}
                 <button className="tool" onClick={() => setScreen("menu")}>Menu</button>
               </div>
             </div>

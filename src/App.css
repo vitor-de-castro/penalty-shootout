@@ -42,7 +42,7 @@ canvas { width: 100%; height: auto; display: block; border-radius: 12px; cursor:
 
 /* Menu */
 .menu { max-width: 620px; margin: 0 auto; }
-.modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.modes { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
 .mode { display: flex; flex-direction: column; gap: 4px; padding: 12px 8px; background: #14532d; color: #f1f5f1; border: 2px solid #3b7a57; border-radius: 10px; cursor: pointer; }
 .mode span { font-size: .75rem; opacity: .8; }
 .mode.on { border-color: #4ade80; background: #166534; }
@@ -75,4 +75,48 @@ canvas { width: 100%; height: auto; display: block; border-radius: 12px; cursor:
   .teams { gap: 6px; }
   .team { font-size: .7rem; padding: 8px 2px; }
   .curve button { padding: 8px 8px; font-size: .8rem; }
+}
+
+/* Hero */
+.hero { position: relative; overflow: hidden; border-radius: 16px; padding: 22px 16px 18px; margin-bottom: 6px;
+  background: repeating-linear-gradient(90deg, #14532d 0 48px, #166534 48px 96px); border: 2px solid #3b7a57; box-shadow: inset 0 0 60px rgba(0,0,0,.45); }
+.hero::after { content: ""; position: absolute; left: 10%; right: 10%; bottom: 0; height: 46px; border: 3px solid rgba(255,255,255,.35); border-bottom: 0; border-radius: 6px 6px 0 0; }
+.heroball { width: 64px; height: 64px; animation: bounce 1.1s cubic-bezier(.3,.7,.4,1) infinite; filter: drop-shadow(0 8px 6px rgba(0,0,0,.45)); position: relative; z-index: 1; }
+@keyframes bounce { 0%,100% { transform: translateY(0) rotate(0); } 50% { transform: translateY(-14px) rotate(180deg); } }
+.kicker { margin: 8px 0 0; letter-spacing: .35em; text-transform: uppercase; font-size: .72rem; color: #fde047; font-weight: 700; position: relative; z-index: 1; }
+.hero h1 { margin: 0; line-height: .92; text-transform: uppercase; font-family: "Anton", Impact, "Arial Narrow Bold", system-ui, sans-serif; font-style: italic; position: relative; z-index: 1; }
+.hero h1 span { display: block; }
+.hero .l1 { font-size: clamp(2.4rem, 11vw, 4.4rem); color: #f8fafc; letter-spacing: .04em; text-shadow: 0 4px 0 #0b2e1a, 0 8px 18px rgba(0,0,0,.5); }
+.hero .l2 { font-size: clamp(2.8rem, 13vw, 5.2rem); background: linear-gradient(180deg, #fef08a, #facc15 55%, #f59e0b); -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-stroke: 1px rgba(0,0,0,.25); filter: drop-shadow(0 4px 0 #0b2e1a); }
+.tag { margin: 10px 0 38px; font-size: 1rem; position: relative; z-index: 1; text-shadow: 0 2px 6px #000; }
+.tag b { color: #fde047; }
+h1.mini { font-size: 1.15rem; letter-spacing: .12em; text-transform: uppercase; margin: 0 0 8px; }
+
+/* Mode cards */
+.mode { align-items: center; }
+.mode i { font-style: normal; font-size: 1.6rem; }
+.mode b { font-size: 1.02rem; }
+.mode.cup { background: linear-gradient(135deg, #854d0e, #ca8a04); border-color: #fde047; }
+.mode.cup.on { box-shadow: 0 0 0 3px rgba(253,224,71,.5); }
+.mode.cup span { opacity: .95; }
+
+/* Difficulty */
+.diffs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.diffs button { display: flex; flex-direction: column; gap: 3px; padding: 10px 6px; background: #14532d; color: #f1f5f1; border: 2px solid #3b7a57; border-radius: 10px; cursor: pointer; }
+.diffs button span { font-size: .72rem; opacity: .8; }
+.diffs button.on { border-color: #4ade80; background: #166534; }
+
+.roundbar { flex-basis: 100%; font-weight: 700; color: #fde047; letter-spacing: .04em; }
+.trophy { font-size: 4rem; line-height: 1; animation: pop .5s ease-out; filter: drop-shadow(0 6px 12px rgba(250,204,21,.6)); }
+.install { margin-top: 14px; padding: 10px 20px; border-radius: 10px; border: 1px solid #fde047; background: transparent; color: #fde047; font-size: .95rem; cursor: pointer; }
+.small { font-size: .8rem; opacity: .7; margin: 10px 0 0; }
+.vsrow .who { width: 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+@media (max-width: 640px) {
+  .hero { padding: 16px 10px 14px; }
+  .heroball { width: 50px; height: 50px; }
+  .tag { font-size: .9rem; margin-bottom: 32px; }
+  .teams { grid-template-columns: repeat(3, 1fr); }
+  .diffs button span { font-size: .65rem; }
+  .vsrow .who { width: 80px; }
 }
