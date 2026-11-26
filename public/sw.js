@@ -1,4 +1,4 @@
-const CACHE = "ps-v8";
+const CACHE = "ps-v9";
 const SHELL = ["/", "/manifest.webmanifest", "/favicon.svg", "/icon-192.png", "/icon-512.png"];
 
 self.addEventListener("install", (e) => {

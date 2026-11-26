@@ -25,7 +25,8 @@ type Outcome = "goal" | "saved" | "missed" | "post" | "bar";
 type Point = { x: number; y: number };
 
 interface Team { squad: Player[]; name: string; shirt: string; shorts: string; socks: string; num: string; keeper: string; stripe?: string }
-interface Dive { x: number; y: number; rot: number; wide: boolean }
+type DiveKind = "low" | "high" | "jump" | "stay";
+interface Dive { x: number; y: number; rot: number; wide: boolean; kind: DiveKind }
 interface Player { n: number; skin: string; hair: string; style: "short" | "long" | "afro" | "buzz" | "bald"; boots: string; h: number }
 interface Particle { x: number; y: number; vx: number; vy: number; rot: number; vr: number; c: string; life: number }
 interface Score { s: number; t: string; d: string }
@@ -59,12 +60,34 @@ interface Game {
 }
 
 // Takers come off the bench in this order: #10 first, then 7, 9, 8, 11, 6...
-const NUMBERS = [10, 7, 9, 8, 11, 6];
+// Second group (from the 7th kick): defenders and midfielders, and last of all the goalkeeper, #1
+const NUMBERS = [10, 7, 9, 8, 11, 6, 17, 14, 20, 18, 5, 1];
+const GK_IDX = 11;
 const SK = { fair: "#ffdbac", light: "#f1c27d", tan: "#e0ac69", olive: "#d09a62", asian: "#f0cfa0", arab: "#c9915c", latino: "#b9803f", brown: "#8d5524", dark: "#6b4220" };
 const HAIR = { black: "#14100c", dark: "#2b1b12", brown: "#4a2c17", chestnut: "#7c3f1d", blond: "#d6a84f", ginger: "#b5532a" };
 type Look = [string, string, Player["style"], string, number]; // skin, hair, style, boots, height
-const squad = (looks: Look[]): Player[] =>
-  looks.map(([skin, hair, style, boots, h], i) => ({ n: NUMBERS[i], skin, hair, style, boots, h }));
+const BOOTS = ["#111827", "#f97316", "#e5e7eb", "#2563eb", "#22c55e", "#facc15"];
+const isDark = (skin: string) => skin === SK.dark || skin === SK.brown;
+// the second group of takers looks different from the first, but fits the same team
+function variant(l: Look, i: number, allowDark: boolean): Look {
+  let [skin, , style, , h] = l;
+  if (!allowDark && isDark(skin)) { skin = SK.light; if (style === "afro") style = "short"; }
+  const dark = isDark(skin);
+  const pale = skin === SK.fair || skin === SK.light;
+  const hairs = dark ? [HAIR.black] : pale ? [HAIR.blond, HAIR.brown, HAIR.chestnut, HAIR.ginger, HAIR.dark] : [HAIR.black, HAIR.dark];
+  const styles: Player["style"][] = dark ? ["short", "buzz", "bald"] : ["short", "buzz", "long", "short", "bald"];
+  return [skin, hairs[(i + 1) % hairs.length], styles[(i + 2) % styles.length], BOOTS[(i + 3) % BOOTS.length], h + ((i % 3) - 1) * 0.03];
+}
+const squad = (looks: Look[]): Player[] => {
+  const allowDark = looks.filter((l) => isDark(l[0])).length >= 2; // only Brazil and France have more than one
+  const first = looks.map(([skin, hair, style, boots, h], i): Player => ({ n: NUMBERS[i], skin, hair, style, boots, h }));
+  const second = looks.slice(0, 5).map((_, i): Player => {
+    const [skin, hair, style, boots, h] = variant(looks[(i + 3) % 6], i, allowDark);
+    return { n: NUMBERS[6 + i], skin, hair, style, boots, h };
+  });
+  const [skin, hair, style, boots, h] = looks[4]; // the goalkeeper
+  return [...first, ...second, { n: NUMBERS[GK_IDX], skin, hair, style, boots, h }];
+};
 
 // Each national team gets a squad that fits it
 const SQUADS: Record<string, Player[]> = {
@@ -210,12 +233,12 @@ const MODES: { id: Mode; name: string; desc: string; icon: string }[] = [
 const DEG = Math.PI / 180;
 // Where the keeper's body centre ends up for each dive option
 const DIVES: Dive[] = [
-  { x: 290, y: 218, rot: -80 * DEG, wide: true },  // left low
-  { x: 285, y: 162, rot: -62 * DEG, wide: true },  // left high
-  { x: 400, y: 195, rot: 0, wide: false },         // stay
-  { x: 400, y: 148, rot: 0, wide: false },         // jump
-  { x: 510, y: 218, rot: 80 * DEG, wide: true },   // right low
-  { x: 515, y: 162, rot: 62 * DEG, wide: true },   // right high
+  { x: 290, y: 218, rot: -80 * DEG, wide: true, kind: "low" },  // left low
+  { x: 285, y: 162, rot: -62 * DEG, wide: true, kind: "high" },  // left high
+  { x: 400, y: 195, rot: 0, wide: false, kind: "stay" },       // stay
+  { x: 400, y: 148, rot: 0, wide: false, kind: "jump" },       // jump
+  { x: 510, y: 218, rot: 80 * DEG, wide: true, kind: "low" },   // right low
+  { x: 515, y: 162, rot: 62 * DEG, wide: true, kind: "high" },   // right high
 ];
 
 // Where the computer likes to shoot
@@ -247,7 +270,8 @@ function keeperPose(d: Dive, dp: number) {
     x: lerp(400, d.x, dp),
     y: lerp(195, d.y, dp) - Math.sin(Math.PI * dp) * (d.wide ? 14 : 26),
     rot: d.rot * dp,
-    raise: d.wide || d.y < 190 ? dp : dp * 0.6,
+    raise: dp,
+    kind: d.kind,
   };
 }
 
@@ -455,26 +479,47 @@ const sfx = {
   slap() { noise(0.07, 0.4, "bandpass", 1500); },
   bar() { tone(520, 0.6, "sine", 0.3, 420); tone(1040, 0.35, "triangle", 0.12); noise(0.06, 0.35, "bandpass", 1800); },
   post() { tone(1300, 0.5, "sine", 0.25, 1100); tone(2600, 0.3, "sine", 0.1); noise(0.05, 0.3, "bandpass", 3000); },
-  // Disappointment: the crowd's sinking "awww"
+  // Disappointment: a deep, heavy groan from the crowd over a low falling drone and a thud
   sad() {
     const c = ac();
     if (!c || muted) return;
     const t = c.currentTime;
-    const dur = 1.5;
+    const dur = 2.3;
+    // the crowd's groan, low and long
     const src = c.createBufferSource();
     src.buffer = noiseBuffer(c, dur);
     const bp = c.createBiquadFilter();
     bp.type = "bandpass";
-    bp.frequency.setValueAtTime(950, t);
-    bp.frequency.exponentialRampToValueAtTime(330, t + dur);
-    bp.Q.value = 2.5;
+    bp.frequency.setValueAtTime(520, t);
+    bp.frequency.exponentialRampToValueAtTime(110, t + dur);
+    bp.Q.value = 2;
     const g = c.createGain();
     g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(0.45, t + 0.15);
-    g.gain.setValueAtTime(0.45, t + dur * 0.4);
+    g.gain.exponentialRampToValueAtTime(0.7, t + 0.2);
+    g.gain.setValueAtTime(0.7, t + dur * 0.35);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     src.connect(bp).connect(g).connect(c.destination);
     src.start(t);
+    // a dark drone sinking underneath it (one note, not a tune)
+    const osc = c.createOscillator();
+    osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(116, t + 0.05);
+    osc.frequency.exponentialRampToValueAtTime(41, t + dur);
+    const lp = c.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.setValueAtTime(440, t);
+    lp.frequency.exponentialRampToValueAtTime(100, t + dur);
+    const og = c.createGain();
+    og.gain.setValueAtTime(0.0001, t);
+    og.gain.exponentialRampToValueAtTime(0.3, t + 0.15);
+    og.gain.setValueAtTime(0.3, t + dur * 0.4);
+    og.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    osc.connect(lp).connect(og).connect(c.destination);
+    osc.start(t + 0.05);
+    osc.stop(t + dur + 0.05);
+    // the heavy thud as the hope drops
+    tone(95, 1.5, "sine", 0.6, 32);
+    noise(0.12, 0.35, "lowpass", 180);
   },
   // A very short happy jingle for your goals
   jingle() {
@@ -688,23 +733,34 @@ function box(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: 
 }
 
 function drawKeeper(
-  ctx: CanvasRenderingContext2D, x: number, y: number, rot: number, raise: number, now: number,
+  ctx: CanvasRenderingContext2D, x: number, y: number, rot: number, raise: number, kind: DiveKind, now: number,
   color: string, skin: string, hair: string,
 ) {
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(rot);
   ctx.lineCap = "round";
-  // legs: thigh, sock, boot
+  ctx.lineJoin = "round";
+  // The side of the body that ends up on top in a dive (it reaches furthest)
+  const up = rot === 0 ? 0 : rot < 0 ? 1 : -1;
+  // legs: thigh, sock, boot. Each pose gives [knee x, knee y, foot x, foot y] per side.
   for (const side of [-1, 1]) {
-    box(ctx, side * 6 - 5, 16, 10, 12, skin);
-    box(ctx, side * 6 - 5, 28, 10, 16, "#e5e7eb");
-    ctx.fillStyle = "#94a3b8";
-    ctx.fillRect(side * 6 - 5, 28, 10, 3);
+    const hx = side * 6;
+    const top = side === up;
+    let tgt: number[] = [0, 28, 0, 45];
+    if (kind === "low") tgt = top ? [4 * side, 29, 10 * side, 46] : [-8 * side, 24, -3 * side, 40]; // one leg trails, the other bends
+    else if (kind === "high") tgt = top ? [12 * side, 27, 24 * side, 42] : [-4 * side, 30, -6 * side, 46]; // scissor kick
+    else if (kind === "jump") tgt = [side * 9, 22, side * 5, 36]; // knees tucked
+    else tgt = [side * 5, 28, side * 9, 45]; // set wide, ready to move
+    const k = raise;
+    const kx = hx + lerp(0, tgt[0], k), ky = lerp(28, tgt[1], k);
+    const fx = hx + lerp(0, tgt[2], k), fy = lerp(45, tgt[3], k);
+    limb(ctx, hx, 16, kx, ky, 10, skin);
+    limb(ctx, kx, ky, fx, fy - 2, 9.5, "#e5e7eb");
     ctx.fillStyle = OUTLINE;
-    ctx.beginPath(); ctx.ellipse(side * 6, 46, 8.2, 5.6, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(fx, fy + 1, 8.2, 5.6, 0, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = "#111827";
-    ctx.beginPath(); ctx.ellipse(side * 6, 46, 7, 4.5, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(fx, fy + 1, 7, 4.5, 0, 0, Math.PI * 2); ctx.fill();
   }
   // shorts
   box(ctx, -14, 3, 28, 16, "#1f2937");
@@ -730,8 +786,14 @@ function drawKeeper(
   // arms + gloves
   const bob = Math.sin(now / 160) * 3 * (1 - raise);
   for (const side of [-1, 1]) {
-    const gx = lerp(side * 32, side * 10, raise);
-    const gy = lerp(-4 + bob, -68, raise);
+    const top = side === up;
+    let tx: number, ty: number;
+    if (kind === "low") { tx = side * 7; ty = top ? -86 : -80; }                     // both arms stretched out in front
+    else if (kind === "high") { tx = top ? side * 5 : side * 22; ty = top ? -92 : -52; } // one arm reaching, one bent
+    else if (kind === "jump") { tx = side * 15; ty = -88; }                          // star jump
+    else { tx = side * 38; ty = -30; }                                               // arms wide
+    const gx = lerp(side * 32, tx, raise);
+    const gy = lerp(-4 + bob, ty, raise);
     limb(ctx, side * 14, -26, gx, gy, 8, color);
     ctx.fillStyle = "#f8fafc";
     ctx.strokeStyle = "#64748b";
@@ -1008,6 +1070,18 @@ function drawCountdown(ctx: CanvasRenderingContext2D, cx: number, frac: number) 
 
 /* ---------- component ---------- */
 
+function HeroBall() {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const ctx = ref.current!.getContext("2d")!;
+    ctx.scale(2, 2);
+    ctx.fillStyle = "rgba(0,0,0,0.4)";
+    ctx.beginPath(); ctx.ellipse(48, 88, 30, 6, 0, 0, Math.PI * 2); ctx.fill();
+    drawBall(ctx, 48, 48, 38, 0.5);
+  }, []);
+  return <canvas ref={ref} className="heroball" width={192} height={192} aria-hidden="true" />;
+}
+
 export default function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const viewW = useRef(W);
@@ -1090,7 +1164,13 @@ export default function App() {
       const mine = teamRef.current;
       const other = s.cpuTeam;
       const kicker = s.turn === "you" ? mine : other;
-      const keeperColor = s.turn === "you" ? keeperKit(other, mine) : keeperKit(mine, other);
+      const defender = s.turn === "you" ? other : mine;
+      let kit = kicker;
+      if (s.takerIdx === GK_IDX) {
+        const gk = keeperKit(kicker, defender);
+        kit = { ...kicker, shirt: gk, stripe: undefined, shorts: "#1f2937", socks: "#e5e7eb", num: colourDist(gk, "#111827") < 140 ? "#f8fafc" : "#111827" };
+      }
+      const keeperColor = keeperKit(defender, kit);
       const el = now - s.t0;
       const dt = Math.min(0.05, (now - lastNow.current) / 1000);
       lastNow.current = now;
@@ -1105,13 +1185,13 @@ export default function App() {
       drawNet(ctx);
 
       // keeper
-      let pose = { x: 400, y: 195, rot: 0, raise: 0 };
+      let pose: ReturnType<typeof keeperPose> = { x: 400, y: 195, rot: 0, raise: 0, kind: "stay" };
       if (s.phase === "flight") pose = keeperPose(s.dive, diveProgress(el));
       else if (s.phase === "result") pose = keeperPose(s.dive, diveProgress(s.flightMs + el));
       else if (s.phase === "done") pose = keeperPose(s.dive, 1);
       else { pose.x = 400 + Math.sin(now / 220) * 8; pose.y = 195 + Math.sin(now / 300) * 2; }
-      const keeperLook = (s.turn === "you" ? other : mine).squad[4];
-      drawKeeper(ctx, pose.x, pose.y, pose.rot, pose.raise, now, keeperColor, keeperLook.skin, keeperLook.hair);
+      const keeperLook = (s.turn === "you" ? other : mine).squad[GK_IDX];
+      drawKeeper(ctx, pose.x, pose.y, pose.rot, pose.raise, pose.kind, now, keeperColor, keeperLook.skin, keeperLook.hair);
       drawFrame(ctx);
 
       // taker
@@ -1175,7 +1255,7 @@ export default function App() {
       if (preKick) drawBall(ctx, bx, by, br, spin);
       const player = kicker.squad[s.takerIdx];
       const moving = s.phase === "runup" && kick === null;
-      drawTaker(ctx, tx, ty, player.h, swing, s.phase === "aim" || s.phase === "power" || s.phase === "save" ? null : kick, kicker, celebrate, player, moving);
+      drawTaker(ctx, tx, ty, player.h, swing, s.phase === "aim" || s.phase === "power" || s.phase === "save" ? null : kick, kit, celebrate, player, moving);
       if (!preKick) drawBall(ctx, bx, by, br, spin, shadow);
 
       if (s.phase === "aim") drawReticle(ctx, s.hover.x, s.hover.y, "#fde047");
@@ -1611,14 +1691,7 @@ export default function App() {
       {screen === "menu" && (
         <section className="menu">
           <header className="hero">
-            <svg className="heroball" viewBox="0 0 100 100" aria-hidden="true">
-              <circle cx="50" cy="50" r="46" fill="#f8fafc" stroke="#0f172a" strokeWidth="4" />
-              <polygon points="50,30 69,44 62,66 38,66 31,44" fill="#0f172a" />
-              <g stroke="#0f172a" strokeWidth="3.5" strokeLinecap="round">
-                <path d="M50 30 L50 8" /><path d="M69 44 L90 37" /><path d="M62 66 L75 84" /><path d="M38 66 L25 84" /><path d="M31 44 L10 37" />
-              </g>
-            </svg>
-            <p className="kicker">The spot-kick game</p>
+            <HeroBall />
             <h1><span className="l1">Penalty</span><span className="l2">Shootout</span></h1>
             <p className="tag">Pick a nation. Beat the keeper. <b>Win the World Cup.</b></p>
           </header>
@@ -1626,7 +1699,7 @@ export default function App() {
           <h2>Game mode</h2>
           <div className="modes">
             {MODES.map((m) => (
-              <button key={m.id} className={`mode ${m.id === "worldcup" ? "cup" : ""} ${mode === m.id ? "on" : ""}`} onClick={() => setMode(m.id)}>
+              <button key={m.id} className={`mode ${mode === m.id ? "on" : ""}`} aria-pressed={mode === m.id} onClick={() => setMode(m.id)}>
                 <i>{m.icon}</i>
                 <b>{m.name}</b>
                 <span>{m.desc}</span>
@@ -1637,7 +1710,7 @@ export default function App() {
           <h2>Difficulty</h2>
           <div className="diffs" role="group" aria-label="Difficulty">
             {(Object.keys(DIFFS) as DiffId[]).map((d) => (
-              <button key={d} className={diff === d ? "on" : ""} onClick={() => setDiff(d)}>
+              <button key={d} className={diff === d ? "on" : ""} aria-pressed={diff === d} onClick={() => setDiff(d)}>
                 <b>{DIFFS[d].name}</b>
                 <span>{DIFFS[d].desc}</span>
               </button>
@@ -1647,7 +1720,7 @@ export default function App() {
           <h2>Your team</h2>
           <div className="teams">
             {TEAMS.map((t) => (
-              <button key={t.name} className={`team ${team.name === t.name ? "on" : ""}`} onClick={() => setTeam(t)}>
+              <button key={t.name} className={`team ${team.name === t.name ? "on" : ""}`} aria-pressed={team.name === t.name} onClick={() => setTeam(t)}>
                 <span className="kit"><i style={{ background: kitBg(t) }} /><b style={{ background: t.shorts }} /></span>
                 {t.name}
               </button>
