@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import "./App.css";
 
 const W = 800;
@@ -154,7 +154,7 @@ const SQUADS: Record<string, Player[]> = {
 };
 
 // Plain colour kits (no club crests)
-const TEAMS: Team[] = [
+const TEAMS_RAW: Team[] = [
   { name: "Brazil", squad: SQUADS.Brazil, shirt: "#facc15", shorts: "#1d4ed8", socks: "#f8fafc", num: "#166534", keeper: "#f97316" },
   { name: "France", squad: SQUADS.France, shirt: "#1e3a8a", shorts: "#f8fafc", socks: "#dc2626", num: "#f8fafc", keeper: "#f97316" },
   { name: "Argentina", squad: SQUADS.Argentina, shirt: "#7dd3fc", stripe: "#f8fafc", shorts: "#111827", socks: "#f8fafc", num: "#1e3a8a", keeper: "#f97316" },
@@ -168,6 +168,11 @@ const TEAMS: Team[] = [
   { name: "Morocco", squad: SQUADS.Morocco, shirt: "#c1272d", shorts: "#14532d", socks: "#c1272d", num: "#f8fafc", keeper: "#f97316" },
   { name: "Mexico", squad: SQUADS.Mexico, shirt: "#15803d", shorts: "#f8fafc", socks: "#dc2626", num: "#f8fafc", keeper: "#f97316" },
 ];
+
+// World Cup titles (Spain won its second in 2026). Teams are listed from most titles to fewest,
+// so the first one, Brazil, is the default pick.
+const WC_TITLES: Record<string, number> = { Brazil: 5, Germany: 4, Italy: 4, Argentina: 3, France: 2, Spain: 2, England: 1 };
+const TEAMS: Team[] = [...TEAMS_RAW].sort((a, b) => (WC_TITLES[b.name] ?? 0) - (WC_TITLES[a.name] ?? 0));
 
 /* ---------- kits that never clash ---------- */
 
@@ -224,10 +229,10 @@ const buzz = (p: number | number[]) => {
 };
 
 const MODES: { id: Mode; name: string; desc: string; icon: string }[] = [
-  { id: "worldcup", name: "World Cup", desc: "Win four shootouts to lift the trophy", icon: "🏆" },
-  { id: "vs", name: "vs Computer", desc: "Take turns: you shoot, then you keep", icon: "🆚" },
   { id: "shots", name: "5 Shots", desc: "Score as many as you can", icon: "🎯" },
   { id: "survival", name: "Survival", desc: "Keep scoring until you miss", icon: "🔥" },
+  { id: "vs", name: "vs Computer", desc: "Take turns: you shoot, then you keep", icon: "🆚" },
+  { id: "worldcup", name: "World Cup", desc: "Win four shootouts to lift the trophy", icon: "🏆" },
 ];
 
 const DEG = Math.PI / 180;
@@ -551,6 +556,102 @@ const sfx = {
   end(win: boolean) {
     sfx.whistle();
     if (win) { roar(1); sfx.fanfare(); } else sfx.sad();
+  },
+};
+
+/* ---------- retro menu music: a little 8-bit loop, all synthesised ---------- */
+
+const mtof = (m: number) => 440 * Math.pow(2, (m - 69) / 12);
+const BEAT = 0.19; // seconds per eighth note
+const CHORDS = [[60, 64, 67], [57, 60, 64], [53, 57, 60], [55, 59, 62]]; // C, Am, F, G
+const BASS = [36, 33, 29, 31];
+const N = null;
+const MELODY: (number | null)[][] = [
+  [76, 76, 79, N, 76, 74, 72, N], [72, 72, 76, N, 74, 72, 69, N], [69, 69, 72, N, 69, 72, 77, N], [79, N, 77, 76, 74, N, N, N],
+  [79, 79, 84, N, 83, 79, 76, N], [76, 76, 81, N, 79, 76, 72, N], [77, 77, 81, N, 84, 81, 77, N], [74, 76, 77, 79, 83, N, N, N],
+];
+
+function chip(c: AudioContext, bus: GainNode, freq: number, at: number, dur: number, type: OscillatorType, vol: number, slideTo?: number) {
+  const osc = c.createOscillator();
+  const g = c.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, at);
+  if (slideTo) osc.frequency.exponentialRampToValueAtTime(slideTo, at + dur);
+  g.gain.setValueAtTime(0.0001, at);
+  g.gain.exponentialRampToValueAtTime(vol, at + 0.012);
+  g.gain.setValueAtTime(vol * 0.8, at + dur * 0.6);
+  g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+  osc.connect(g).connect(bus);
+  osc.start(at);
+  osc.stop(at + dur + 0.03);
+}
+
+function hit(c: AudioContext, bus: GainNode, at: number, dur: number, vol: number, freq: number) {
+  const src = c.createBufferSource();
+  src.buffer = noiseBuffer(c, dur);
+  const f = c.createBiquadFilter();
+  f.type = "highpass";
+  f.frequency.value = freq;
+  const g = c.createGain();
+  g.gain.setValueAtTime(vol, at);
+  g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+  src.connect(f).connect(g).connect(bus);
+  src.start(at);
+}
+
+const music = {
+  bus: null as GainNode | null,
+  timer: 0,
+  step: 0,
+  next: 0,
+  playing: false,
+  start() {
+    const c = ac();
+    if (!c || this.playing) return;
+    if (!this.bus) { this.bus = c.createGain(); this.bus.connect(c.destination); }
+    this.bus.gain.cancelScheduledValues(c.currentTime);
+    this.bus.gain.setValueAtTime(0.0001, c.currentTime);
+    this.bus.gain.exponentialRampToValueAtTime(0.45, c.currentTime + 0.8);
+    this.playing = true;
+    this.step = 0;
+    this.next = c.currentTime + 0.08;
+    this.timer = window.setInterval(() => this.pump(), 80);
+    this.pump();
+  },
+  stop() {
+    if (!this.playing) return;
+    this.playing = false;
+    window.clearInterval(this.timer);
+    if (actx && this.bus) {
+      const g = this.bus.gain;
+      g.cancelScheduledValues(actx.currentTime);
+      g.setValueAtTime(Math.max(g.value, 0.0001), actx.currentTime);
+      g.exponentialRampToValueAtTime(0.0001, actx.currentTime + 0.3);
+    }
+  },
+  // schedule the next notes a little ahead of time so the beat stays steady
+  pump() {
+    if (!actx || !this.bus) return;
+    while (this.next < actx.currentTime + 0.35) {
+      this.note(actx, this.bus, this.step, this.next);
+      this.next += BEAT;
+      this.step = (this.step + 1) % 64;
+    }
+  },
+  note(c: AudioContext, bus: GainNode, step: number, at: number) {
+    const bar = Math.floor(step / 8);
+    const i = step % 8;
+    const chord = CHORDS[bar % 4];
+    const lead = MELODY[bar][i];
+    if (lead !== null) {
+      const long = MELODY[bar][(i + 1) % 8] === null;
+      chip(c, bus, mtof(lead), at, BEAT * (long ? 1.9 : 0.9), "square", 0.09);
+    }
+    chip(c, bus, mtof(chord[[0, 1, 2, 1, 0, 1, 2, 1][i]] + 12), at, BEAT * 0.55, "square", 0.03); // arpeggio
+    if (i % 2 === 0) chip(c, bus, mtof(BASS[bar % 4] + (i % 4 === 0 ? 0 : 12)), at, BEAT * 1.6, "triangle", 0.24); // bass
+    if (i === 0 || i === 4) chip(c, bus, 150, at, 0.12, "sine", 0.4, 45); // kick
+    if (i === 2 || i === 6) hit(c, bus, at, 0.09, 0.14, 1500); // snare
+    if (i % 2 === 1) hit(c, bus, at, 0.03, 0.05, 7000); // hi-hat
   },
 };
 
@@ -1070,6 +1171,62 @@ function drawCountdown(ctx: CanvasRenderingContext2D, cx: number, frac: number) 
 
 /* ---------- component ---------- */
 
+interface Slide { key: string; node: ReactNode }
+
+// A row of cards you swipe (or use the arrows). The card in the middle is the chosen one.
+function Carousel({ slides, index, onChange, label, size }: {
+  slides: Slide[]; index: number; onChange: (i: number) => void; label: string; size: "sm" | "md" | "lg";
+}) {
+  const box = useRef<HTMLDivElement>(null);
+  const timer = useRef(0);
+  const centre = (i: number, smooth: boolean) => {
+    const el = box.current;
+    const child = el?.children[i] as HTMLElement | undefined;
+    if (!el || !child) return;
+    el.scrollTo({ left: child.offsetLeft - (el.clientWidth - child.offsetWidth) / 2, behavior: smooth ? "smooth" : "auto" });
+  };
+  const nearest = () => {
+    const el = box.current!;
+    const mid = el.scrollLeft + el.clientWidth / 2;
+    let best = 0, bd = Infinity;
+    Array.from(el.children).forEach((c, i) => {
+      const h = c as HTMLElement;
+      const d = Math.abs(h.offsetLeft + h.offsetWidth / 2 - mid);
+      if (d < bd) { bd = d; best = i; }
+    });
+    return best;
+  };
+  useLayoutEffect(() => { centre(index, false); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (nearest() !== index) centre(index, true); }, [index]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+  // once the swipe has settled, the card in the middle becomes the choice
+  const onScroll = () => {
+    window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => { const n = nearest(); if (n !== index) onChange(n); }, 90);
+  };
+  const go = (d: number) => onChange(Math.min(slides.length - 1, Math.max(0, index + d)));
+  return (
+    <div
+      className="carousel"
+      role="group"
+      aria-label={label}
+      tabIndex={0}
+      onKeyDown={(e) => { if (e.key === "ArrowLeft") { e.preventDefault(); go(-1); } else if (e.key === "ArrowRight") { e.preventDefault(); go(1); } }}
+    >
+      <button className="arrow l" aria-label="Previous" disabled={index === 0} onClick={() => go(-1)}>‹</button>
+      <div className={`track ${size}`} ref={box} onScroll={onScroll}>
+        {slides.map((sl, i) => (
+          <div key={sl.key} className={`slide ${i === index ? "on" : ""}`} aria-current={i === index} onClick={() => i !== index && onChange(i)}>
+            {sl.node}
+          </div>
+        ))}
+      </div>
+      <button className="arrow r" aria-label="Next" disabled={index === slides.length - 1} onClick={() => go(1)}>›</button>
+      <div className="pips" aria-hidden="true">{slides.map((sl, i) => <i key={sl.key} className={i === index ? "on" : ""} />)}</div>
+    </div>
+  );
+}
+
 function HeroBall() {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
@@ -1101,6 +1258,7 @@ export default function App() {
   const [mute, setMute] = useState(() => load("ps-mute") === "1");
   const [vib, setVib] = useState(() => load("ps-vib") !== "0");
   const [diff, setDiff] = useState<DiffId>(() => { const d = load("ps-diff"); return d === "easy" || d === "hard" ? d : "normal"; });
+  const [musicOn, setMusicOn] = useState(() => load("ps-music") !== "0");
   const [installEvt, setInstallEvt] = useState<InstallEvent | null>(null);
   const cup = useRef<{ round: number; opps: Team[] }>({ round: 0, opps: [] });
   const trail = useRef<{ x: number; y: number; r: number }[]>([]);
@@ -1112,6 +1270,26 @@ export default function App() {
   scoresRef.current = scores;
   muted = mute;
   vibOn = vib;
+
+  // Remember the latest choices as soon as they change
+  useEffect(() => {
+    store("ps-team", team.name);
+    store("ps-mode", mode);
+    store("ps-diff", diff);
+  }, [team, mode, diff]);
+
+  // Menu music. Browsers only allow sound after a first tap, so the first tap or key starts it.
+  useEffect(() => {
+    if (screen !== "menu" || !musicOn || mute) { music.stop(); return; }
+    music.start();
+    const unlock = () => { ac(); music.start(); };
+    window.addEventListener("pointerdown", unlock);
+    window.addEventListener("keydown", unlock);
+    return () => {
+      window.removeEventListener("pointerdown", unlock);
+      window.removeEventListener("keydown", unlock);
+    };
+  }, [screen, musicOn, mute]);
 
   // The animation loop lives in an effect that only runs once, so it calls the
   // latest versions of these functions through this ref.
@@ -1625,6 +1803,13 @@ export default function App() {
     (document.activeElement as HTMLElement | null)?.blur();
   }
 
+  function toggleMusic() {
+    if (musicOn && !mute) { setMusicOn(false); store("ps-music", "0"); return; }
+    setMusicOn(true);
+    store("ps-music", "1");
+    if (mute) toggleMute();
+  }
+
   function toggleVib() {
     const next = !vib;
     vibOn = next;
@@ -1691,53 +1876,61 @@ export default function App() {
       {screen === "menu" && (
         <section className="menu">
           <header className="hero">
+            <button className="musicbtn" onClick={toggleMusic} aria-pressed={musicOn && !mute}>{musicOn && !mute ? "♪ Music on" : "♪ Music off"}</button>
             <HeroBall />
             <h1><span className="l1">Penalty</span><span className="l2">Shootout</span></h1>
             <p className="tag">Pick a nation. Beat the keeper. <b>Win the World Cup.</b></p>
           </header>
 
-          <h2>Game mode</h2>
-          <div className="modes">
-            {MODES.map((m) => (
-              <button key={m.id} className={`mode ${mode === m.id ? "on" : ""}`} aria-pressed={mode === m.id} onClick={() => setMode(m.id)}>
-                <i>{m.icon}</i>
-                <b>{m.name}</b>
-                <span>{m.desc}</span>
-              </button>
-            ))}
-          </div>
+          <h2 className="sec">Choose your mode</h2>
+          <p className="sub">Swipe, or use the arrows</p>
+          <Carousel
+            label="Game mode"
+            size="lg"
+            index={Math.max(0, MODES.findIndex((m) => m.id === mode))}
+            onChange={(i) => setMode(MODES[i].id)}
+            slides={MODES.map((m) => ({ key: m.id, node: <><i>{m.icon}</i><b>{m.name}</b><span>{m.desc}</span></> }))}
+          />
 
-          <h2>Difficulty</h2>
-          <div className="diffs" role="group" aria-label="Difficulty">
-            {(Object.keys(DIFFS) as DiffId[]).map((d) => (
-              <button key={d} className={diff === d ? "on" : ""} aria-pressed={diff === d} onClick={() => setDiff(d)}>
-                <b>{DIFFS[d].name}</b>
-                <span>{DIFFS[d].desc}</span>
-              </button>
-            ))}
-          </div>
+          <h2 className="sec">Difficulty</h2>
+          <Carousel
+            label="Difficulty"
+            size="md"
+            index={(Object.keys(DIFFS) as DiffId[]).indexOf(diff)}
+            onChange={(i) => setDiff((Object.keys(DIFFS) as DiffId[])[i])}
+            slides={(Object.keys(DIFFS) as DiffId[]).map((d) => ({ key: d, node: <><b>{DIFFS[d].name}</b><span>{DIFFS[d].desc}</span></> }))}
+          />
 
-          <h2>Your team</h2>
-          <div className="teams">
-            {TEAMS.map((t) => (
-              <button key={t.name} className={`team ${team.name === t.name ? "on" : ""}`} aria-pressed={team.name === t.name} onClick={() => setTeam(t)}>
-                <span className="kit"><i style={{ background: kitBg(t) }} /><b style={{ background: t.shorts }} /></span>
-                {t.name}
-              </button>
-            ))}
-          </div>
+          <h2 className="sec">Pick your team</h2>
+          <Carousel
+            label="Team"
+            size="sm"
+            index={Math.max(0, TEAMS.findIndex((t) => t.name === team.name))}
+            onChange={(i) => setTeam(TEAMS[i])}
+            slides={TEAMS.map((t) => ({
+              key: t.name,
+              node: (
+                <>
+                  <span className="bigkit"><i style={{ background: kitBg(t) }} /><b style={{ background: t.shorts }} /></span>
+                  <b>{t.name}</b>
+                  <span>{WC_TITLES[t.name] ? `🏆 ${WC_TITLES[t.name]} World Cup${WC_TITLES[t.name] > 1 ? "s" : ""}` : "Chasing a first title"}</span>
+                </>
+              ),
+            }))}
+          />
 
-          <h2>{mode === "vs" ? "Your record" : mode === "worldcup" ? "Your World Cup" : "High scores"}</h2>
+          <h2 className="sec">{mode === "vs" ? "Your record" : mode === "worldcup" ? "Your World Cup" : "High scores"}</h2>
           {mode === "vs"
             ? <p className="record">{scores.vs.w} {scores.vs.w === 1 ? "win" : "wins"} · {scores.vs.l} {scores.vs.l === 1 ? "loss" : "losses"}</p>
             : mode === "worldcup"
               ? <p className="record">{cupLine}</p>
               : scoreTable(scores[mode])}
 
-          <button className="restart big" onClick={() => startGame()}>{mode === "worldcup" ? "Start the World Cup" : "Kick off!"}</button>
-
-          {installEvt && <button className="install" onClick={install}>📲 Install as an app</button>}
-          {!installEvt && iosHint && <p className="small">On iPhone: tap Share, then “Add to Home Screen” to install.</p>}
+          <div className="cta">
+            <button className="restart big" onClick={() => startGame()}>{mode === "worldcup" ? "Start the World Cup" : "Kick off!"}</button>
+            {installEvt && <button className="install" onClick={install}>📲 Install as an app</button>}
+            {!installEvt && iosHint && <p className="small">On iPhone: tap Share, then “Add to Home Screen” to install.</p>}
+          </div>
           <p className="small foot">Made with React, TypeScript and Vite · works offline once loaded</p>
         </section>
       )}
